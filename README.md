@@ -1,4 +1,4 @@
-# AWS Tutorials
+# RADIUSS AWS Tutorials
 
 This CloudFormation stack deploys containerized tutorials on EC2 using AWS ECS.
 Tasks (docker containers) can be launched via CLI commands or Slack bot integration.
