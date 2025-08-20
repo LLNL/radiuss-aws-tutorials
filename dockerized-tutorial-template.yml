@@ -1,0 +1,833 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Use EC2 and Lambdas to launch a dockerized tutorial
+
+Parameters:
+  TutorialImage:
+    Type: String
+    Description: Docker image with tutorial materials
+  TutorialName:
+    Type: String
+    Description: Name of the tutorial
+  TutorialPort:
+    Type: Number
+    Description: Main port to expose from container
+  AdditionalPorts:
+    Type: CommaDelimitedList
+    Description: Optional additional ports to expose (comma-separated, e.g. 8000,8080)
+    Default: "NONE"
+  TutorialQueryString:
+    Type: String
+    Description: Query string to append to the container URL
+    Default: ""
+  TaskTimeoutHours:
+    Type: Number
+    Description: Maximum hours a task can run before being stopped
+    Default: 6
+    MinValue: 1
+    MaxValue: 72
+  InstanceType:
+    Type: String
+    Description: EC2 instance type for ECS cluster
+    Default: g4dn.xlarge
+  KeyPairName:
+    Type: String
+    Description: EC2 Key Pair for SSH access (leave empty to disable SSH)
+    Default: ""
+  TutorialAMI:
+    Type: AWS::EC2::Image::Id
+    Description: AMI ID for EC2 instances (region-specific)
+  DesiredCapacity:
+    Type: Number
+    Description: Number of instances to keep running
+    Default: 0
+    MinValue: 0
+    MaxValue: 250
+  PasswordSecretsName:
+    Type: String
+    Description: AWS Secrets Manager secret name for password authentication (empty = no password required)
+    Default: ""
+  PasswordSecretsKey:
+    Type: String
+    Description: Key within the secret for the password (only used if PasswordSecretsName is provided)
+    Default: ""
+  CustomResponseBlocks:
+    Type: String
+    Description: JSON string for custom Slack blocks response when ready (if empty, uses default text response)
+    Default: ""
+
+Conditions:
+  HasKeyPair: !Not [!Equals [!Ref KeyPairName, ""]]
+  HasAdditionalPorts: !Not [!Equals [!Select [0, !Ref AdditionalPorts], "NONE"]]
+  HasSecondPort: !And [!Condition HasAdditionalPorts, !Not [!Equals [!Select [0, !Ref AdditionalPorts], ""]]]
+  HasThirdPort: !And [!Condition HasAdditionalPorts, !Not [!Equals [!Join [",", !Ref AdditionalPorts], !Select [0, !Ref AdditionalPorts]]]]
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${TutorialName}-Vpc"
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.1.0/24
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub "${TutorialName}-PublicSubnet"
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  SubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub "${TutorialName}-cluster"
+
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub "${TutorialName}-task"
+      NetworkMode: bridge
+      RequiresCompatibilities:
+        - EC2
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: !Sub "${TutorialName}-container"
+          Image: !Ref TutorialImage
+          MemoryReservation: 4096
+          ResourceRequirements:
+            - Type: GPU
+              Value: "1"
+          PortMappings:
+            - ContainerPort: !Ref TutorialPort
+              HostPort: !Ref TutorialPort
+              Protocol: tcp
+            - !If
+              - HasSecondPort
+              - ContainerPort: !Select [0, !Ref AdditionalPorts]
+                HostPort: !Select [0, !Ref AdditionalPorts]
+                Protocol: tcp
+              - !Ref "AWS::NoValue"
+            - !If
+              - HasThirdPort
+              - ContainerPort: !Select [1, !Ref AdditionalPorts]
+                HostPort: !Select [1, !Ref AdditionalPorts]
+                Protocol: tcp
+              - !Ref "AWS::NoValue"
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Sub "/ecs/${TutorialName}-task"
+              awslogs-region: !Ref "AWS::Region"
+              awslogs-stream-prefix: ecs
+          Environment:
+            - Name: LAST_UPDATED
+              Value: "2025-08-20-v1"
+          HealthCheck:
+            Command:
+              - CMD-SHELL
+              - !Sub
+                - "curl -f http://127.0.0.1:${Port} || exit 1"
+                - Port: !Ref TutorialPort
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 30
+
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/ecs/${TutorialName}-task"
+      RetentionInDays: 7
+
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow port access
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 32768
+          ToPort: 60999
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+
+  TutorialPortIngressRule:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref SecurityGroup
+      IpProtocol: tcp
+      FromPort: !Ref TutorialPort
+      ToPort: !Ref TutorialPort
+      CidrIp: 0.0.0.0/0
+
+  AdditionalPort1IngressRule:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: HasSecondPort
+    Properties:
+      GroupId: !Ref SecurityGroup
+      IpProtocol: tcp
+      FromPort: !Select [0, !Ref AdditionalPorts]
+      ToPort: !Select [0, !Ref AdditionalPorts]
+      CidrIp: 0.0.0.0/0
+
+  AdditionalPort2IngressRule:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: HasThirdPort
+    Properties:
+      GroupId: !Ref SecurityGroup
+      IpProtocol: tcp
+      FromPort: !Select [1, !Ref AdditionalPorts]
+      ToPort: !Select [1, !Ref AdditionalPorts]
+      CidrIp: 0.0.0.0/0
+
+  ECSInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role
+        - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+
+  ECSInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref ECSInstanceRole
+
+  LaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: !Sub "${TutorialName}-launch-template"
+      LaunchTemplateData:
+        ImageId: !Ref TutorialAMI
+        InstanceType: !Ref InstanceType
+        KeyName: !If [HasKeyPair, !Ref KeyPairName, !Ref "AWS::NoValue"]
+        IamInstanceProfile:
+          Arn: !GetAtt ECSInstanceProfile.Arn
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash
+
+            # Configure ECS agent
+            mkdir -p /etc/ecs
+            sudo tee /etc/ecs/ecs.config << EOF
+            ECS_CLUSTER=${Cluster}
+            ECS_ENABLE_GPU_SUPPORT=true
+            EOF
+
+            sudo systemctl restart ecs --no-block
+
+  AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: !Sub "${TutorialName}-asg"
+      LaunchTemplate:
+        LaunchTemplateId: !Ref LaunchTemplate
+        Version: !GetAtt LaunchTemplate.LatestVersionNumber
+      MinSize: 0
+      MaxSize: 250
+      DesiredCapacity: !Ref DesiredCapacity
+      NewInstancesProtectedFromScaleIn: true
+      VPCZoneIdentifier:
+        - !Ref PublicSubnet
+      Tags:
+        - Key: Name
+          Value: !Sub "${TutorialName}-ecs-instance"
+          PropagateAtLaunch: true
+
+  ECSCapacityProvider:
+    Type: AWS::ECS::CapacityProvider
+    Properties:
+      Name: !Sub "${TutorialName}-capacity-provider"
+      AutoScalingGroupProvider:
+        AutoScalingGroupArn: !Ref AutoScalingGroup
+        ManagedScaling:
+          Status: ENABLED
+          TargetCapacity: 100
+          MinimumScalingStepSize: 1
+          MaximumScalingStepSize: 1
+        ManagedTerminationProtection: ENABLED
+
+  ClusterCapacityProviderAssociation:
+    Type: AWS::ECS::ClusterCapacityProviderAssociations
+    Properties:
+      Cluster: !Ref Cluster
+      CapacityProviders:
+        - !Ref ECSCapacityProvider
+      DefaultCapacityProviderStrategy:
+        - CapacityProvider: !Ref ECSCapacityProvider
+          Weight: 1
+
+  SlackBotLaunchLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-SlackBotLaunch"
+      Handler: launch-function.lambda_handler
+      Runtime: python3.12
+      Role: !GetAtt SlackBotLambdaRole.Arn
+      Timeout: 15
+      Code:
+        S3Bucket: hpcic-tutorials-lambdas
+        S3Key: slackbot-ec2/launch-function.zip
+        S3ObjectVersion: "dSR7cZ.qTBDpX85e_j7JSdKZ_cs_0Q2i"
+
+  SlackBotNotifyLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-SlackBotNotify"
+      Handler: notify-function.lambda_handler
+      Runtime: python3.12
+      Role: !GetAtt SlackBotLambdaRole.Arn
+      Timeout: 500
+      Code:
+        S3Bucket: hpcic-tutorials-lambdas
+        S3Key: slackbot-ec2/notify-function.zip
+        S3ObjectVersion: "X4zwG5LDE0mg6pEV0MEQho_Lnlx3g46E"
+
+  SlackBotEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${AWS::StackName}-SlackBotTaskReady"
+      EventBusName: default
+      EventPattern:
+        source:
+          - "custom.slackbot"
+        detail:
+          stack:
+            - !Sub "${AWS::StackName}"
+      Targets:
+        - Arn: !GetAtt SlackBotNotifyLambda.Arn
+          Id: SlackNotify
+
+  SlackBotNotifyPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref SlackBotNotifyLambda
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt SlackBotEventRule.Arn
+
+  SlackBotLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-SlackBotLambdaExecutionRole"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: SlackBotPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - cloudformation:DescribeStacks
+                  - events:PutEvents
+                Resource:
+                  - !Sub arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${AWS::StackName}/*
+                  - !Sub arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/default
+              - Effect: Allow
+                Action:
+                  - ecs:RunTask
+                  - ecs:DescribeTasks
+                  - ecs:DescribeContainerInstances
+                  - ecs:ListTasks
+                  - ecs:ListTagsForResource
+                  - ec2:DescribeNetworkInterfaces
+                  - ec2:DescribeInstances
+                  - ecs:TagResource
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource: !GetAtt TaskExecutionRole.Arn
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:*-ecs-secret*"
+
+  SlackHttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: SlackBotAPI
+      ProtocolType: HTTP
+
+  SlackHttpApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref SlackHttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt SlackBotLaunchLambda.Arn
+      PayloadFormatVersion: "2.0"
+
+  SlackHttpApiRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref SlackHttpApi
+      RouteKey: "POST /launch/{stack_name}"
+      Target: !Sub "integrations/${SlackHttpApiIntegration}"
+
+  SlackHttpApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref SlackHttpApi
+      StageName: $default
+      AutoDeploy: true
+
+  SlackBotLambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref SlackBotLaunchLambda
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${SlackHttpApi}/*/*"
+
+  SlackBotNotifyLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${SlackBotNotifyLambda}"
+      RetentionInDays: 7
+
+  SlackBotLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${SlackBotLaunchLambda}"
+      RetentionInDays: 7
+
+  CleanupLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-TaskCleanup"
+      Handler: cleanup-tasks-function.lambda_handler
+      Runtime: python3.12
+      Role: !GetAtt CleanupLambdaRole.Arn
+      Timeout: 300
+      Code:
+        S3Bucket: hpcic-tutorials-lambdas
+        S3Key: slackbot-ec2/cleanup-tasks-function.zip
+        S3ObjectVersion: "tmV1d6F0VsY3.6CWCnLASx1UhGTFT38z"
+
+  CleanupLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-CleanupLambdaRole"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CleanupPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - ecs:ListTasks
+                  - ecs:DescribeTasks
+                  - ecs:StopTask
+                  - ecs:DescribeContainerInstances
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - ec2:TerminateInstances
+                Resource: "*"
+
+  CleanupScheduleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${AWS::StackName}-TaskCleanupSchedule"
+      Description: "Triggers task cleanup every 15 minutes"
+      ScheduleExpression: "rate(15 minutes)"
+      Targets:
+        - Arn: !GetAtt CleanupLambda.Arn
+          Id: CleanupTarget
+          Input: !Sub |
+            {
+              "cluster_name": "${Cluster}",
+              "timeout_hours": ${TaskTimeoutHours}
+            }
+
+  CleanupLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref CleanupLambda
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt CleanupScheduleRule.Arn
+
+  CleanupLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${CleanupLambda}"
+      RetentionInDays: 7
+
+Outputs:
+  ClusterName:
+    Description: ECS Cluster Name
+    Value: !Ref Cluster
+
+  TaskDefinitionArn:
+    Description: Task Definition ARN
+    Value: !Ref TaskDefinition
+
+  SecurityGroupId:
+    Description: Security Group ID
+    Value: !Ref SecurityGroup
+
+  PublicSubnetId:
+    Description: Public Subnet ID
+    Value: !Ref PublicSubnet
+
+  TutorialImage:
+    Description: Image used for the tutorial
+    Value: !Ref TutorialImage
+
+  TutorialName:
+    Description: Tutorial name
+    Value: !Ref TutorialName
+
+  TutorialPort:
+    Description: Main port exposed by the container
+    Value: !Ref TutorialPort
+
+  TutorialQueryString:
+    Description: Query string to append to the container URL
+    Value: !Ref TutorialQueryString
+
+  TaskTimeoutHours:
+    Description: Timeout for tasks in hours
+    Value: !Ref TaskTimeoutHours
+
+  CapacityProviderName:
+    Description: ECS Capacity Provider Name
+    Value: !Ref ECSCapacityProvider
+
+  PasswordSecretsName:
+    Description: AWS Secrets Manager secret name for password authentication
+    Value: !Ref PasswordSecretsName
+
+  PasswordSecretsKey:
+    Description: Key within the secret for the password
+    Value: !Ref PasswordSecretsKey
+
+  CustomResponseBlocks:
+    Description: JSON string for custom Slack blocks response when ready
+    Value: !Ref CustomResponseBlocks
+
+  LaunchTasksCommand:
+    Description: Bash function to launch N tutorial tasks through CLI
+    Value: !Sub |
+      # Function to wait for task IP and return URL
+      wait_for_task_url() {
+        local TASK_ID=$1
+        local TASK_ARN=$2
+        local MAX_ATTEMPTS=60
+
+        echo "Waiting for task $TASK_ID..."
+
+        for ((attempt = 1; attempt <= $MAX_ATTEMPTS; attempt++)); do
+          TASK_DETAILS=$(aws ecs describe-tasks \
+            --cluster ${Cluster} \
+            --tasks "$TASK_ARN" \
+            --query 'tasks[0]' \
+            --output json 2>/dev/null)
+
+          if [ -n "$TASK_DETAILS" ] && [ "$TASK_DETAILS" != "null" ]; then
+            CONTAINER_INSTANCE_ID=$(echo "$TASK_DETAILS" | tr -d '\000-\031' | jq -r '.containerInstanceArn // empty' | cut -d'/' -f3)
+            HOST_PORT=$(echo "$TASK_DETAILS" | tr -d '\000-\031' | jq -r '.containers[0].networkBindings[0].hostPort // empty')
+
+            if [ -n "$CONTAINER_INSTANCE_ID" ] && [ "$HOST_PORT" != "null" ] && [ -n "$HOST_PORT" ]; then
+              # Get the actual EC2 instance ID from the container instance
+              EC2_INSTANCE_ID=$(aws ecs describe-container-instances \
+                --cluster ${Cluster} \
+                --container-instances "$CONTAINER_INSTANCE_ID" \
+                --query 'containerInstances[0].ec2InstanceId' \
+                --output text 2>/dev/null)
+
+              if [ -n "$EC2_INSTANCE_ID" ] && [ "$EC2_INSTANCE_ID" != "None" ]; then
+                PUBLIC_IP=$(aws ec2 describe-instances \
+                  --instance-ids "$EC2_INSTANCE_ID" \
+                  --query 'Reservations[0].Instances[0].PublicIpAddress' \
+                  --output text 2>/dev/null)
+
+                if [ "$PUBLIC_IP" != "None" ] && [ -n "$PUBLIC_IP" ]; then
+                  echo "$TASK_ID: http://$PUBLIC_IP:$HOST_PORT${TutorialQueryString}"
+                  return 0
+                fi
+              fi
+            fi
+          fi
+
+          if [ $((attempt % 15)) -eq 0 ]; then
+            echo "Still waiting for task $TASK_ID... (attempt $attempt/$MAX_ATTEMPTS)"
+          fi
+
+          sleep 2
+        done
+
+        echo "ERROR: Task $TASK_ID did not get IP address within timeout"
+        return 1
+      }
+
+      launch_tasks() {
+        local N=$1
+        if [ -z "$N" ]; then
+          echo "Usage: launch_tasks <number-of-tasks>"
+          return 1
+        fi
+
+        echo "Launching $N tasks..."
+        TASK_ARNS=""
+        for ((i = 1; i <= N; i++)); do
+          TASK_ID="task-$(date +%s)-$i"
+
+          TASK_ARN=$(aws ecs run-task \
+            --cluster ${Cluster} \
+            --capacity-provider-strategy capacityProvider=${ECSCapacityProvider},weight=1 \
+            --task-definition ${TaskDefinition} \
+            --tags key=task-id,value=$TASK_ID key=launch-type,value=cli \
+            --query 'tasks[0].taskArn' \
+            --output text)
+
+          if [ -z "$TASK_ARNS" ]; then
+            TASK_ARNS="$TASK_ARN"
+          else
+            TASK_ARNS="$TASK_ARNS,$TASK_ARN"
+          fi
+        done
+
+        echo "Waiting for all task IPs..."
+
+        # Process each comma-separated ARN
+        OLD_IFS="$IFS"
+        IFS=','
+        for TASK_ARN in $TASK_ARNS; do
+          if [ -n "$TASK_ARN" ]; then
+            TASK_ID=$(aws ecs list-tags-for-resource \
+              --resource-arn "$TASK_ARN" \
+              --query 'tags[?key==`task-id`].value' \
+              --output text)
+
+            wait_for_task_url "$TASK_ID" "$TASK_ARN"
+          fi
+        done
+        IFS="$OLD_IFS"
+      }
+
+      echo "Run 'launch_tasks N' to launch N tasks."
+
+  GetContainerUrlCommand:
+    Description: Print task-id and URL for all running tasks
+    Value: !Sub |
+      echo "task-id,slack-user,launch-type,url"
+
+      aws ecs list-tasks \
+        --cluster ${Cluster} \
+        --desired-status RUNNING \
+        --query 'taskArns[]' \
+        --output text | tr '\t' '\n' | while read TASK; do
+
+        TASK_ID=$(aws ecs list-tags-for-resource \
+          --resource-arn "$TASK" \
+          --query 'tags[?key==`task-id`].value' \
+          --output text)
+
+        SLACK_USER=$(aws ecs list-tags-for-resource \
+          --resource-arn "$TASK" \
+          --query 'tags[?key==`slack-user`].value' \
+          --output text)
+
+        LAUNCH_TYPE=$(aws ecs list-tags-for-resource \
+          --resource-arn "$TASK" \
+          --query 'tags[?key==`launch-type`].value' \
+          --output text)
+
+        TASK_DETAILS=$(aws ecs describe-tasks \
+          --cluster ${Cluster} \
+          --tasks "$TASK" \
+          --query 'tasks[0]' \
+          --output json)
+
+        CONTAINER_INSTANCE_ID=$(echo "$TASK_DETAILS" | tr -d '\000-\031' | jq -r '.containerInstanceArn // empty' | cut -d'/' -f3)
+        HOST_PORT=$(echo "$TASK_DETAILS" | tr -d '\000-\031' | jq -r '.containers[0].networkBindings[0].hostPort // empty')
+
+        if [ -n "$CONTAINER_INSTANCE_ID" ] && [ "$HOST_PORT" != "null" ] && [ -n "$HOST_PORT" ]; then
+          # Get the actual EC2 instance ID from the container instance
+          EC2_INSTANCE_ID=$(aws ecs describe-container-instances \
+            --cluster ${Cluster} \
+            --container-instances "$CONTAINER_INSTANCE_ID" \
+            --query 'containerInstances[0].ec2InstanceId' \
+            --output text)
+
+          if [ -n "$EC2_INSTANCE_ID" ] && [ "$EC2_INSTANCE_ID" != "None" ]; then
+            PUBLIC_IP=$(aws ec2 describe-instances \
+              --instance-ids "$EC2_INSTANCE_ID" \
+              --query 'Reservations[0].Instances[0].PublicIpAddress' \
+              --output text)
+          else
+            PUBLIC_IP="-"
+          fi
+        else
+          PUBLIC_IP="-"
+          HOST_PORT="-"
+        fi
+
+        # Use dash for missing values
+        [ -z "$SLACK_USER" ] && SLACK_USER="-"
+        [ -z "$LAUNCH_TYPE" ] && LAUNCH_TYPE="-"
+        [ "$PUBLIC_IP" = "None" ] && PUBLIC_IP="-"
+
+        if [ "$PUBLIC_IP" != "-" ] && [ "$HOST_PORT" != "-" ]; then
+          echo "$TASK_ID,$SLACK_USER,$LAUNCH_TYPE,http://$PUBLIC_IP:$HOST_PORT${TutorialQueryString}"
+        else
+          echo "$TASK_ID,$SLACK_USER,$LAUNCH_TYPE,-"
+        fi
+      done
+
+  GetCliTaskUrlCommand:
+    Description: Print task-id and URL for tasks launched through CLI only
+    Value: !Sub |
+      echo "task-id,url"
+
+      aws ecs list-tasks \
+        --cluster ${Cluster} \
+        --desired-status RUNNING \
+        --query 'taskArns[]' \
+        --output text | tr '\t' '\n' | while read TASK; do
+
+        # Check if task has cli launch tag
+        LAUNCH_TYPE=$(aws ecs list-tags-for-resource \
+          --resource-arn "$TASK" \
+          --query 'tags[?key==`launch-type`].value' \
+          --output text)
+
+        if [ "$LAUNCH_TYPE" = "cli" ]; then
+          TASK_ID=$(aws ecs list-tags-for-resource \
+            --resource-arn "$TASK" \
+            --query 'tags[?key==`task-id`].value' \
+            --output text)
+
+          TASK_DETAILS=$(aws ecs describe-tasks \
+            --cluster ${Cluster} \
+            --tasks "$TASK" \
+            --query 'tasks[0]' \
+            --output json)
+
+          CONTAINER_INSTANCE_ID=$(echo "$TASK_DETAILS" | tr -d '\000-\031' | jq -r '.containerInstanceArn // empty' | cut -d'/' -f3)
+          HOST_PORT=$(echo "$TASK_DETAILS" | tr -d '\000-\031' | jq -r '.containers[0].networkBindings[0].hostPort // empty')
+
+          if [ -n "$CONTAINER_INSTANCE_ID" ] && [ "$HOST_PORT" != "null" ] && [ -n "$HOST_PORT" ]; then
+            # Get the actual EC2 instance ID from the container instance
+            EC2_INSTANCE_ID=$(aws ecs describe-container-instances \
+              --cluster ${Cluster} \
+              --container-instances "$CONTAINER_INSTANCE_ID" \
+              --query 'containerInstances[0].ec2InstanceId' \
+              --output text)
+
+            if [ -n "$EC2_INSTANCE_ID" ] && [ "$EC2_INSTANCE_ID" != "None" ]; then
+              PUBLIC_IP=$(aws ec2 describe-instances \
+                --instance-ids "$EC2_INSTANCE_ID" \
+                --query 'Reservations[0].Instances[0].PublicIpAddress' \
+                --output text)
+
+              if [ "$PUBLIC_IP" != "None" ] && [ -n "$PUBLIC_IP" ]; then
+                echo "$TASK_ID,http://$PUBLIC_IP:$HOST_PORT${TutorialQueryString}"
+              else
+                echo "$TASK_ID,-"
+              fi
+            else
+              echo "$TASK_ID,-"
+            fi
+          else
+            echo "$TASK_ID,-"
+          fi
+        fi
+      done
+
+  CleanupCommand:
+    Description: Stop all tutorial tasks
+    Value: !Sub |
+
+      aws ecs list-tasks --cluster ${Cluster} --desired-status RUNNING --query 'taskArns[]' --output text | \
+      xargs -n 1 -I {} aws ecs stop-task --cluster ${Cluster} --task {}
+
+  SlackCommandUrl:
+    Description: Slack command endpoint URL
+    Value: !Sub "https://${SlackHttpApi}.execute-api.${AWS::Region}.amazonaws.com/launch/${AWS::StackName}"

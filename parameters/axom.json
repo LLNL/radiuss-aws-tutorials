@@ -1,0 +1,46 @@
+[
+  {
+    "ParameterKey": "TutorialAMI",
+    "ParameterValue": "${AMI_ID}"
+  },
+  {
+    "ParameterKey": "TutorialImage",
+    "ParameterValue": "axom-tutorial:local"
+  },
+  {
+    "ParameterKey": "TutorialPort",
+    "ParameterValue": "3000"
+  },
+  {
+    "ParameterKey": "TutorialName",
+    "ParameterValue": "axom"
+  },
+  {
+    "ParameterKey": "TutorialQueryString",
+    "ParameterValue": "?folder=/home/axomdev/radiuss_tutorial"
+  },
+  {
+    "ParameterKey": "TaskTimeoutHours",
+    "ParameterValue": "1"
+  },
+  {
+    "ParameterKey": "InstanceType",
+    "ParameterValue": "g4dn.2xlarge"
+  },
+  {
+    "ParameterKey": "DesiredCapacity",
+    "ParameterValue": "0"
+  },
+  {
+    "ParameterKey": "PasswordSecretsName",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "PasswordSecretsKey",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "CustomResponseBlocks",
+    "ParameterValue": ""
+  }
+]

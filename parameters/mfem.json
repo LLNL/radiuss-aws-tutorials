@@ -1,0 +1,50 @@
+[
+  {
+    "ParameterKey": "TutorialAMI",
+    "ParameterValue": "${AMI_ID}"
+  },
+  {
+    "ParameterKey": "TutorialImage",
+    "ParameterValue": "mfem-developer-cpu:local"
+  },
+  {
+    "ParameterKey": "TutorialPort",
+    "ParameterValue": "3000"
+  },
+  {
+    "ParameterKey": "AdditionalPorts",
+    "ParameterValue": "8000,8080"
+  },
+  {
+    "ParameterKey": "TutorialName",
+    "ParameterValue": "mfem"
+  },
+  {
+    "ParameterKey": "TutorialQueryString",
+    "ParameterValue": "?folder=/home/euler/mfem"
+  },
+  {
+    "ParameterKey": "TaskTimeoutHours",
+    "ParameterValue": "1"
+  },
+  {
+    "ParameterKey": "InstanceType",
+    "ParameterValue": "g4dn.xlarge"
+  },
+  {
+    "ParameterKey": "DesiredCapacity",
+    "ParameterValue": "0"
+  },
+  {
+    "ParameterKey": "PasswordSecretsName",
+    "ParameterValue": "mfem-ecs-secret"
+  },
+  {
+    "ParameterKey": "PasswordSecretsKey",
+    "ParameterValue": "mfem-ecs-slack-password"
+  },
+  {
+    "ParameterKey": "CustomResponseBlocks",
+    "ParameterValue": "[{\"type\":\"divider\"},{\"type\":\"section\",\"text\":{\"type\":\"mrkdwn\",\"text\":\"*Welcome to the MFEM AWS Tutorial*\\nYou can follow the tutorial at your own pace using https://mfem.org/tutorial.\\nYour development container is ready at `http://{{PUBLIC_IP}}:{{HOST_PORT}}{{QUERY_STRING}}`\\nThe interactive visualization tool can be accessed at `http://{{PUBLIC_IP}}:8000/live`\\n\"},\"accessory\":{\"type\":\"image\",\"image_url\":\"https://mfem.org/img/logo-300@2x.png\",\"alt_text\":\"MFEM\"}},{\"type\":\"divider\"}]"
+  }
+]

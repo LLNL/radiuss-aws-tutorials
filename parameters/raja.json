@@ -1,0 +1,46 @@
+[
+  {
+    "ParameterKey": "TutorialAMI",
+    "ParameterValue": "${AMI_ID}"
+  },
+  {
+    "ParameterKey": "TutorialImage",
+    "ParameterValue": "raja-suite-tutorial:local"
+  },
+  {
+    "ParameterKey": "TutorialPort",
+    "ParameterValue": "3000"
+  },
+  {
+    "ParameterKey": "TutorialName",
+    "ParameterValue": "raja"
+  },
+  {
+    "ParameterKey": "TutorialQueryString",
+    "ParameterValue": "?folder=/home/rajadev/tutorial"
+  },
+  {
+    "ParameterKey": "TaskTimeoutHours",
+    "ParameterValue": "1"
+  },
+  {
+    "ParameterKey": "InstanceType",
+    "ParameterValue": "g4dn.xlarge"
+  },
+  {
+    "ParameterKey": "DesiredCapacity",
+    "ParameterValue": "0"
+  },
+  {
+    "ParameterKey": "PasswordSecretsName",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "PasswordSecretsKey",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "CustomResponseBlocks",
+    "ParameterValue": ""
+  }
+]
