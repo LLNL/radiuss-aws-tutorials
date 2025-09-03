@@ -54,6 +54,10 @@ Parameters:
     Type: String
     Description: JSON string for custom Slack blocks response when ready (if empty, uses default text response)
     Default: ""
+  DomainName:
+    Type: String
+    Description: Base domain name for HTTPS tutorials
+    Default: "hpcic.training"
 
 Conditions:
   HasKeyPair: !Not [!Equals [!Ref KeyPairName, ""]]
@@ -109,6 +113,23 @@ Resources:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
       SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+  SecondaryPublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.2.0/24
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select [1, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub "${TutorialName}-SecondaryPublicSubnet"
+
+  SecondarySubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref SecondaryPublicSubnet
       RouteTableId: !Ref PublicRouteTable
 
   Cluster:
@@ -230,6 +251,124 @@ Resources:
       ToPort: !Select [1, !Ref AdditionalPorts]
       CidrIp: 0.0.0.0/0
 
+  # ALB Resources
+  TutorialALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub "${TutorialName}-alb"
+      Type: application
+      Scheme: internet-facing
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+      Subnets:
+        - !Ref PublicSubnet
+        - !Ref SecondaryPublicSubnet
+      Tags:
+        - Key: Name
+          Value: !Sub "${TutorialName}-ALB"
+
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Tutorial ALB
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub "${TutorialName}-ALB-SecurityGroup"
+
+  TutorialTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub "${TutorialName}-targets"
+      Protocol: HTTP
+      Port: !Ref TutorialPort
+      VpcId: !Ref VPC
+      TargetType: instance
+      HealthCheckProtocol: HTTP
+      HealthCheckPort: !Ref TutorialPort
+      HealthCheckPath: /
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 5
+      Tags:
+        - Key: Name
+          Value: !Sub "${TutorialName}-TargetGroup"
+
+  SSLCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Sub "*.${DomainName}"
+      ValidationMethod: DNS
+      Tags:
+        - Key: Name
+          Value: !Sub "${TutorialName}-SSL-Certificate"
+
+  ALBHTTPListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref TutorialALB
+      Protocol: HTTP
+      Port: 80
+      DefaultActions:
+        - Type: redirect
+          RedirectConfig:
+            Protocol: HTTPS
+            Port: 443
+            StatusCode: HTTP_301
+
+  ALBHTTPSListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref TutorialALB
+      Protocol: HTTPS
+      Port: 443
+      Certificates:
+        - CertificateArn: !Ref SSLCertificate
+      DefaultActions:
+        - Type: fixed-response
+          FixedResponseConfig:
+            StatusCode: 404
+            ContentType: text/html
+            MessageBody: |
+              <html><body>
+              <h1>Tutorial Session Not Found</h1>
+              <p>The requested tutorial session could not be found. Please:</p>
+              <ul>
+                <li>Check your URL for typos</li>
+                <li>Request a new tutorial session via Slack</li>
+                <li>Contact support if this issue persists</li>
+              </ul>
+              </body></html>
+
+  # Route 53 Resources
+  HostedZone:
+    Type: AWS::Route53::HostedZone
+    Properties:
+      Name: !Ref DomainName
+      Tags:
+        - Key: Name
+          Value: !Sub "${TutorialName}-HostedZone"
+
+  TutorialDNSRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZone
+      Name: !Sub "${TutorialName}.${DomainName}"
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt TutorialALB.DNSName
+        HostedZoneId: !GetAtt TutorialALB.CanonicalHostedZoneID
+
   ECSInstanceRole:
     Type: AWS::IAM::Role
     Properties:
@@ -327,7 +466,7 @@ Resources:
       Code:
         S3Bucket: hpcic-tutorials-lambdas
         S3Key: slackbot-ec2/launch-function.zip
-        S3ObjectVersion: "dSR7cZ.qTBDpX85e_j7JSdKZ_cs_0Q2i"
+        S3ObjectVersion: "mCRV1cbB3sPYtmWYJPgLxmiBRAlld87p"
 
   SlackBotNotifyLambda:
     Type: AWS::Lambda::Function
@@ -340,7 +479,7 @@ Resources:
       Code:
         S3Bucket: hpcic-tutorials-lambdas
         S3Key: slackbot-ec2/notify-function.zip
-        S3ObjectVersion: "X4zwG5LDE0mg6pEV0MEQho_Lnlx3g46E"
+        S3ObjectVersion: "3tkegp6VAkRoaByZ1vvifzxfmx939BT9"
 
   SlackBotEventRule:
     Type: AWS::Events::Rule
@@ -413,6 +552,19 @@ Resources:
                 Action:
                   - secretsmanager:GetSecretValue
                 Resource: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:*-ecs-secret*"
+              - Effect: Allow
+                Action:
+                  - elasticloadbalancing:RegisterTargets
+                  - elasticloadbalancing:DeregisterTargets
+                  - elasticloadbalancing:DescribeTargetHealth
+                  - elasticloadbalancing:CreateTargetGroup
+                  - elasticloadbalancing:DeleteTargetGroup
+                  - elasticloadbalancing:DescribeTargetGroups
+                  - elasticloadbalancing:CreateRule
+                  - elasticloadbalancing:DeleteRule
+                  - elasticloadbalancing:DescribeRules
+                  - elasticloadbalancing:AddTags
+                Resource: "*"
 
   SlackHttpApi:
     Type: AWS::ApiGatewayV2::Api
@@ -473,7 +625,7 @@ Resources:
       Code:
         S3Bucket: hpcic-tutorials-lambdas
         S3Key: slackbot-ec2/cleanup-tasks-function.zip
-        S3ObjectVersion: "tmV1d6F0VsY3.6CWCnLASx1UhGTFT38z"
+        S3ObjectVersion: "BJsaJXv.Qcb5BNP4grL_qh4P52E3lFDz"
 
   CleanupLambdaRole:
     Type: AWS::IAM::Role
@@ -508,6 +660,15 @@ Resources:
                 Action:
                   - ec2:TerminateInstances
                 Resource: "*"
+              - Effect: Allow
+                Action:
+                  - elasticloadbalancing:DeregisterTargets
+                  - elasticloadbalancing:DescribeTargetHealth
+                  - elasticloadbalancing:DeleteTargetGroup
+                  - elasticloadbalancing:DescribeTargetGroups
+                  - elasticloadbalancing:DeleteRule
+                  - elasticloadbalancing:DescribeRules
+                Resource: "*"
 
   CleanupScheduleRule:
     Type: AWS::Events::Rule
@@ -521,6 +682,7 @@ Resources:
           Input: !Sub |
             {
               "cluster_name": "${Cluster}",
+              "stack_name": "${AWS::StackName}",
               "timeout_hours": ${TaskTimeoutHours}
             }
 
@@ -591,6 +753,34 @@ Outputs:
     Description: JSON string for custom Slack blocks response when ready
     Value: !Ref CustomResponseBlocks
 
+  ALBDNSName:
+    Description: DNS name of the Application Load Balancer
+    Value: !GetAtt TutorialALB.DNSName
+
+  ALBHostedZoneId:
+    Description: Hosted zone ID of the Application Load Balancer
+    Value: !GetAtt TutorialALB.CanonicalHostedZoneID
+
+  TargetGroupArn:
+    Description: ARN of the target group
+    Value: !Ref TutorialTargetGroup
+
+  DomainName:
+    Description: Base domain name for tutorials
+    Value: !Ref DomainName
+
+  TutorialURL:
+    Description: HTTPS URL for accessing tutorials
+    Value: !Sub "https://${TutorialName}.${DomainName}"
+
+  ALBHTTPSListenerArn:
+    Description: ARN of the HTTPS listener for dynamic rule creation
+    Value: !Ref ALBHTTPSListener
+
+  VPCId:
+    Description: VPC ID for target group creation
+    Value: !Ref VPC
+
   LaunchTasksCommand:
     Description: Bash function to launch N tutorial tasks through CLI
     Value: !Sub |
@@ -628,7 +818,7 @@ Outputs:
                   --output text 2>/dev/null)
 
                 if [ "$PUBLIC_IP" != "None" ] && [ -n "$PUBLIC_IP" ]; then
-                  echo "$TASK_ID: http://$PUBLIC_IP:$HOST_PORT${TutorialQueryString}"
+                  echo "$TASK_ID: https://${TutorialName}.${DomainName}${TutorialQueryString}"
                   return 0
                 fi
               fi
@@ -755,7 +945,7 @@ Outputs:
         [ "$PUBLIC_IP" = "None" ] && PUBLIC_IP="-"
 
         if [ "$PUBLIC_IP" != "-" ] && [ "$HOST_PORT" != "-" ]; then
-          echo "$TASK_ID,$SLACK_USER,$LAUNCH_TYPE,http://$PUBLIC_IP:$HOST_PORT${TutorialQueryString}"
+          echo "$TASK_ID,$SLACK_USER,$LAUNCH_TYPE,https://${TutorialName}.${DomainName}${TutorialQueryString}"
         else
           echo "$TASK_ID,$SLACK_USER,$LAUNCH_TYPE,-"
         fi
@@ -808,7 +998,7 @@ Outputs:
                 --output text)
 
               if [ "$PUBLIC_IP" != "None" ] && [ -n "$PUBLIC_IP" ]; then
-                echo "$TASK_ID,http://$PUBLIC_IP:$HOST_PORT${TutorialQueryString}"
+                echo "$TASK_ID,https://${TutorialName}.${DomainName}${TutorialQueryString}"
               else
                 echo "$TASK_ID,-"
               fi
