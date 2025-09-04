@@ -111,16 +111,17 @@ def lambda_handler(event, context):
                 ]
             )
 
-            # Create ALB listener rule for session-based routing
-            print(f"Creating ALB listener rule for session path: /{session_id}/*")
+            # Create ALB listener rule for host-based routing
+            subdomain = f"{session_id}.{tutorial_name}.{domain_name}"
+            print(f"Creating ALB listener rule for host: {subdomain}")
             priority = hash(session_id) % 49000 + 1000
 
             elbv2.create_rule(
                 ListenerArn=alb_listener_arn,
                 Conditions=[
                     {
-                        'Field': 'path-pattern',
-                        'Values': [f'/{session_id}/*']
+                        'Field': 'host-header',
+                        'Values': [subdomain]
                     }
                 ],
                 Priority=priority,
@@ -139,8 +140,8 @@ def lambda_handler(event, context):
 
             print(f"Successfully created session-based routing for user {user}")
 
-            # Generate HTTPS URL with session path
-            tutorial_url = f"https://{tutorial_name}.{domain_name}/{session_id}/{query_string}"
+            # Generate HTTPS URL with session subdomain
+            tutorial_url = f"https://{session_id}.{tutorial_name}.{domain_name}/{query_string}"
 
         except Exception as e:
             print(f"Error with ALB session setup: {e}")

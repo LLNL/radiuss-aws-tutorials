@@ -91,9 +91,9 @@ def lambda_handler(event, context):
                                     for rule in listener_rules['Rules']:
                                         # Check if this rule is for our session
                                         for condition in rule.get('Conditions', []):
-                                            if condition.get('Field') == 'path-pattern':
+                                            if condition.get('Field') == 'host-header':
                                                 for value in condition.get('Values', []):
-                                                    if value == f'/{session_id}/*':
+                                                    if value.startswith(f'{session_id}.'):
                                                         print(f"Deleting ALB listener rule for session {session_id}")
                                                         elbv2.delete_rule(RuleArn=rule['RuleArn'])
                                                         break

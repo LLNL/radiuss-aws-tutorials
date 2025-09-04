@@ -312,9 +312,13 @@ Resources:
     Type: AWS::CertificateManager::Certificate
     Properties:
       DomainName: !Sub "*.${DomainName}"
+      SubjectAlternativeNames:
+        - !Sub "*.${TutorialName}.${DomainName}"
       ValidationMethod: DNS
       DomainValidationOptions:
         - DomainName: !Sub "*.${DomainName}"
+          HostedZoneId: !Ref HostedZoneId
+        - DomainName: !Sub "*.${TutorialName}.${DomainName}"
           HostedZoneId: !Ref HostedZoneId
       Tags:
         - Key: Name
@@ -362,6 +366,16 @@ Resources:
     Properties:
       HostedZoneId: !Ref HostedZoneId
       Name: !Sub "${TutorialName}.${DomainName}"
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt TutorialALB.DNSName
+        HostedZoneId: !GetAtt TutorialALB.CanonicalHostedZoneID
+
+  TutorialWildcardDNSRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub "*.${TutorialName}.${DomainName}"
       Type: A
       AliasTarget:
         DNSName: !GetAtt TutorialALB.DNSName
@@ -477,7 +491,7 @@ Resources:
       Code:
         S3Bucket: hpcic-tutorials-lambdas
         S3Key: slackbot-ec2/notify-function.zip
-        S3ObjectVersion: "3tkegp6VAkRoaByZ1vvifzxfmx939BT9"
+        S3ObjectVersion: "Qst5L4Wn7V0VEOeZjfE39dAw7sYWwRyu"
 
   SlackBotEventRule:
     Type: AWS::Events::Rule
@@ -623,7 +637,7 @@ Resources:
       Code:
         S3Bucket: hpcic-tutorials-lambdas
         S3Key: slackbot-ec2/cleanup-tasks-function.zip
-        S3ObjectVersion: "BJsaJXv.Qcb5BNP4grL_qh4P52E3lFDz"
+        S3ObjectVersion: "9vmaPNE6vFCDNpqMtj_JrTB8pUR3j4K1"
 
   CleanupLambdaRole:
     Type: AWS::IAM::Role
