@@ -682,6 +682,10 @@ Resources:
                   - elasticloadbalancing:DeleteRule
                   - elasticloadbalancing:DescribeRules
                 Resource: "*"
+              - Effect: Allow
+                Action:
+                  - cloudformation:DescribeStacks
+                Resource: !Sub "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${AWS::StackName}/*"
 
   CleanupScheduleRule:
     Type: AWS::Events::Rule
