@@ -781,10 +781,6 @@ Outputs:
     Description: Base domain name for tutorials
     Value: !Ref DomainName
 
-  TutorialURL:
-    Description: HTTPS URL for accessing tutorials
-    Value: !Sub "https://${TutorialName}.${DomainName}"
-
   ALBHTTPSListenerArn:
     Description: ARN of the HTTPS listener for dynamic rule creation
     Value: !Ref ALBHTTPSListener
@@ -830,7 +826,15 @@ Outputs:
                   --output text 2>/dev/null)
 
                 if [ "$PUBLIC_IP" != "None" ] && [ -n "$PUBLIC_IP" ]; then
-                  echo "$TASK_ID: https://${TutorialName}.${DomainName}${TutorialQueryString}"
+                  # Directly invoke notify Lambda to create ALB rules
+                  aws lambda invoke \
+                    --function-name "${AWS::StackName}-SlackBotNotify" \
+                    --cli-binary-format raw-in-base64-out \
+                    --payload "{\"detail\":{\"task_arn\":\"$TASK_ARN\",\"cluster\":\"${Cluster}\",\"stack\":\"${AWS::StackName}\",\"response_url\":\"\",\"user\":\"cli-$TASK_ID\",\"port\":\"${TutorialPort}\",\"query_string\":\"${TutorialQueryString}\",\"custom_response_blocks\":\"\"}}" \
+                    /tmp/lambda-response.json > /dev/null 2>&1
+
+                  SESSION_ID=$(echo "$PUBLIC_IP" | tr '.' '-')
+                  echo "$TASK_ID: https://$SESSION_ID.${TutorialName}.${DomainName}${TutorialQueryString}"
                   return 0
                 fi
               fi
@@ -957,7 +961,8 @@ Outputs:
         [ "$PUBLIC_IP" = "None" ] && PUBLIC_IP="-"
 
         if [ "$PUBLIC_IP" != "-" ] && [ "$HOST_PORT" != "-" ]; then
-          echo "$TASK_ID,$SLACK_USER,$LAUNCH_TYPE,https://${TutorialName}.${DomainName}${TutorialQueryString}"
+          SESSION_ID=$(echo "$PUBLIC_IP" | tr '.' '-')
+          echo "$TASK_ID,$SLACK_USER,$LAUNCH_TYPE,https://$SESSION_ID.${TutorialName}.${DomainName}${TutorialQueryString}"
         else
           echo "$TASK_ID,$SLACK_USER,$LAUNCH_TYPE,-"
         fi
@@ -1010,7 +1015,8 @@ Outputs:
                 --output text)
 
               if [ "$PUBLIC_IP" != "None" ] && [ -n "$PUBLIC_IP" ]; then
-                echo "$TASK_ID,https://${TutorialName}.${DomainName}${TutorialQueryString}"
+                SESSION_ID=$(echo "$PUBLIC_IP" | tr '.' '-')
+                echo "$TASK_ID,https://$SESSION_ID.${TutorialName}.${DomainName}${TutorialQueryString}"
               else
                 echo "$TASK_ID,-"
               fi
