@@ -116,10 +116,12 @@ aws elbv2 describe-rules --listener-arn $ALB_LISTENER_ARN \
 # Clean up all session-based target groups
 STACK_PREFIX="${TUTORIAL_NAME}-tutorial"
 aws elbv2 describe-target-groups \
-  --query "TargetGroups[?starts_with(TargetGroupName, \`$STACK_PREFIX-\`)].{Name:TargetGroupName,Arn:TargetGroupArn}" \
-  --output text | while read -r arn name; do
+  --query "TargetGroups[?starts_with(TargetGroupName, \`$STACK_PREFIX-\`)].TargetGroupArn" \
+  --output text | tr '\t' '\n' | while read -r arn; do
     if [ -n "$arn" ]; then
-      echo "Deleting target group: $name (ARN: $arn)"
+      # Get the target group name for display
+      name=$(echo "$arn" | sed 's/.*targetgroup\/\([^/]*\)\/.*/\1/')
+      echo "Deleting target group: $name"
       aws elbv2 delete-target-group --target-group-arn "$arn"
     fi
   done
