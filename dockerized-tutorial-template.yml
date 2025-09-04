@@ -862,40 +862,57 @@ Outputs:
 
         echo "Launching $N tasks..."
         TASK_ARNS=""
+        successful_launches=0
         for ((i = 1; i <= N; i++)); do
           TASK_ID="task-$(date +%s)-$i"
 
+          echo "Launching task $i of $N..."
           TASK_ARN=$(aws ecs run-task \
             --cluster ${Cluster} \
             --capacity-provider-strategy capacityProvider=${ECSCapacityProvider},weight=1 \
             --task-definition ${TaskDefinition} \
             --tags key=task-id,value=$TASK_ID key=launch-type,value=cli \
             --query 'tasks[0].taskArn' \
-            --output text)
+            --output text 2>/dev/null)
 
-          if [ -z "$TASK_ARNS" ]; then
-            TASK_ARNS="$TASK_ARN"
+          # Check if task launch was successful
+          if [ -n "$TASK_ARN" ] && [ "$TASK_ARN" != "None" ] && [ "$TASK_ARN" != "null" ] && [[ "$TASK_ARN" == arn:aws:ecs:* ]]; then
+            if [ -z "$TASK_ARNS" ]; then
+              TASK_ARNS="$TASK_ARN"
+            else
+              TASK_ARNS="$TASK_ARNS,$TASK_ARN"
+            fi
+            successful_launches=$((successful_launches + 1))
+            echo "Task $i launched successfully: $TASK_ID"
           else
-            TASK_ARNS="$TASK_ARNS,$TASK_ARN"
+            echo "WARNING: Task $i failed to launch (insufficient capacity or other error)"
           fi
         done
 
+        echo "Successfully launched $successful_launches out of $N requested tasks"
+
+        if [ $successful_launches -eq 0 ]; then
+          echo "ERROR: No tasks were launched successfully. Check cluster capacity and try again."
+          return 1
+        fi
+
         echo "Waiting for all task IPs..."
 
-        # Process each comma-separated ARN
-        OLD_IFS="$IFS"
-        IFS=','
-        for TASK_ARN in $TASK_ARNS; do
+        # Process each comma-separated ARN (only valid ones were added to the list)
+        echo "$TASK_ARNS" | tr ',' '\n' | while IFS= read -r TASK_ARN; do
           if [ -n "$TASK_ARN" ]; then
             TASK_ID=$(aws ecs list-tags-for-resource \
               --resource-arn "$TASK_ARN" \
               --query 'tags[?key==`task-id`].value' \
-              --output text)
+              --output text 2>/dev/null)
 
-            wait_for_task_url "$TASK_ID" "$TASK_ARN"
+            if [ -n "$TASK_ID" ] && [ "$TASK_ID" != "None" ]; then
+              wait_for_task_url "$TASK_ID" "$TASK_ARN"
+            else
+              echo "Warning: Could not get task ID for ARN: $TASK_ARN"
+            fi
           fi
         done
-        IFS="$OLD_IFS"
       }
 
       echo "Run 'launch_tasks N' to launch N tasks."
