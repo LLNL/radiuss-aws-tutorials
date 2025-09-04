@@ -58,6 +58,10 @@ Parameters:
     Type: String
     Description: Base domain name for HTTPS tutorials
     Default: "hpcic.training"
+  HostedZoneId:
+    Type: String
+    Description: Existing Route 53 Hosted Zone ID for the domain
+    Default: "Z00533746QS6KB6QTFC2"
 
 Conditions:
   HasKeyPair: !Not [!Equals [!Ref KeyPairName, ""]]
@@ -309,6 +313,9 @@ Resources:
     Properties:
       DomainName: !Sub "*.${DomainName}"
       ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: !Sub "*.${DomainName}"
+          HostedZoneId: !Ref HostedZoneId
       Tags:
         - Key: Name
           Value: !Sub "${TutorialName}-SSL-Certificate"
@@ -350,19 +357,10 @@ Resources:
               </ul>
               </body></html>
 
-  # Route 53 Resources
-  HostedZone:
-    Type: AWS::Route53::HostedZone
-    Properties:
-      Name: !Ref DomainName
-      Tags:
-        - Key: Name
-          Value: !Sub "${TutorialName}-HostedZone"
-
   TutorialDNSRecord:
     Type: AWS::Route53::RecordSet
     Properties:
-      HostedZoneId: !Ref HostedZone
+      HostedZoneId: !Ref HostedZoneId
       Name: !Sub "${TutorialName}.${DomainName}"
       Type: A
       AliasTarget:

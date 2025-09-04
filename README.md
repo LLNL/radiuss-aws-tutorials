@@ -11,6 +11,7 @@ Notes:
 - You must have your AWS credentials configured in `~/.aws/credentials`
 - You can set your region with `region = us-east-1` in `~/.aws/config`.
 
+
 # AWS CLI commands
 
 ## Create a stack
