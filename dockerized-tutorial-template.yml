@@ -671,6 +671,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - ec2:TerminateInstances
+                  - ec2:DescribeInstances
                 Resource: "*"
               - Effect: Allow
                 Action:
