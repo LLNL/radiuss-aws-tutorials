@@ -10,7 +10,7 @@ To create an AMI see `ami/README.md`.
 Notes:
 - You must have your AWS credentials configured in `~/.aws/credentials`
 - You can set your region with `region = us-east-1` in `~/.aws/config`.
-
+- The HTTPS set up with the ALB limits number of instances to 100.
 
 # AWS CLI commands
 
