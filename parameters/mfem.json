@@ -5,7 +5,7 @@
   },
   {
     "ParameterKey": "TutorialImage",
-    "ParameterValue": "mfem-developer-cpu:local"
+    "ParameterValue": "ghcr.io/mfem/containers/developer-cuda"
   },
   {
     "ParameterKey": "TutorialPort",
@@ -17,7 +17,7 @@
   },
   {
     "ParameterKey": "TutorialName",
-    "ParameterValue": "mfem"
+    "ParameterValue": "mfem-https"
   },
   {
     "ParameterKey": "TutorialQueryString",
@@ -29,7 +29,7 @@
   },
   {
     "ParameterKey": "InstanceType",
-    "ParameterValue": "g4dn.xlarge"
+    "ParameterValue": "g6.4xlarge"
   },
   {
     "ParameterKey": "DesiredCapacity",
