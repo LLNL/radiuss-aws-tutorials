@@ -21,6 +21,35 @@ def generate_session_id(public_ip):
     """Generate unique session ID using EC2 public IP"""
     return public_ip.replace('.', '-')
 
+def create_alb_rule(alb_listener_arn, subdomain, target_group_arn, priority, session_id, user, stack_name, port=None):
+    """Create an ALB listener rule for a port (main port if port=None)"""
+
+    # Main port gets no path condition, additional ports get /portXXX* path
+    conditions = [{'Field': 'host-header', 'Values': [subdomain]}]
+    if port:
+        conditions.append({'Field': 'path-pattern', 'Values': [f'/port{port}*']})
+
+    rule_type = 'main' if not port else f'port-{port}'
+
+    return elbv2.create_rule(
+        ListenerArn=alb_listener_arn,
+        Conditions=conditions,
+        Priority=priority,
+        Actions=[{
+            'Type': 'forward',
+            'ForwardConfig': {
+                'TargetGroups': [{'TargetGroupArn': target_group_arn, 'Weight': 100}],
+                'TargetGroupStickinessConfig': {'Enabled': False}
+            }
+        }],
+        Tags=[
+            {'Key': 'session-id', 'Value': session_id},
+            {'Key': 'user', 'Value': user},
+            {'Key': 'stack', 'Value': stack_name},
+            {'Key': 'rule-type', 'Value': rule_type}
+        ]
+    )
+
 def lambda_handler(event, context):
     print("Received event:", json.dumps(event, indent=2))
 
@@ -99,16 +128,25 @@ def lambda_handler(event, context):
             )
             user_target_group_arn = user_target_group_response['TargetGroups'][0]['TargetGroupArn']
 
-            # Register the EC2 instance with the user-specific target group
+            # Register the EC2 instance with the user-specific target group for multiple ports
             print(f"Registering instance {instance_id} with user target group {user_target_group_arn}")
+
+            # Get additional ports from detail if available
+            additional_ports = detail.get("additional_ports", "").split(",") if detail.get("additional_ports") else []
+
+            # Build targets list with main port and additional ports
+            targets = [{'Id': instance_id, 'Port': tutorial_port}]
+
+            # Add additional ports
+            for port_str in additional_ports:
+                if port_str.strip() and port_str.strip() != "NONE":
+                    port = int(port_str.strip())
+                    targets.append({'Id': instance_id, 'Port': port})
+                    print(f"Adding additional port {port} to target group")
+
             elbv2.register_targets(
                 TargetGroupArn=user_target_group_arn,
-                Targets=[
-                    {
-                        'Id': instance_id,
-                        'Port': tutorial_port
-                    }
-                ]
+                Targets=targets
             )
 
             # Check if ALB listener rule already exists for this session
@@ -128,35 +166,26 @@ def lambda_handler(event, context):
                     break
 
             if not rule_exists:
-                print(f"Creating ALB listener rule for host: {subdomain}")
-                priority = hash(session_id) % 49000 + 1000
+                print(f"Creating ALB listener rules for host: {subdomain}")
+                rule_priority = hash(session_id) % 49000 + 1000
 
-                elbv2.create_rule(
-                    ListenerArn=alb_listener_arn,
-                    Conditions=[
-                        {
-                            'Field': 'host-header',
-                            'Values': [subdomain]
-                        }
-                    ],
-                    Priority=priority,
-                    Actions=[
-                        {
-                            'Type': 'forward',
-                            'TargetGroupArn': user_target_group_arn
-                        }
-                    ],
-                    Tags=[
-                        {'Key': 'session-id', 'Value': session_id},
-                        {'Key': 'user', 'Value': user},
-                        {'Key': 'stack', 'Value': stack_name}
-                    ]
-                )
+                # Create main rule for the default port
+                create_alb_rule(alb_listener_arn, subdomain, user_target_group_arn, rule_priority, session_id, user, stack_name)
+                rule_priority += 1
+
+                # Create additional port rules
+                for port_str in additional_ports:
+                    if port_str.strip() and port_str.strip() != "NONE":
+                        port = int(port_str.strip())
+                        print(f"Creating rule for port {port} with path /port{port}*")
+                        create_alb_rule(alb_listener_arn, subdomain, user_target_group_arn, rule_priority, session_id, user, stack_name, port)
+                        rule_priority += 1
 
             print(f"Successfully created session-based routing for user {user}")
 
             # Generate HTTPS URL with session subdomain
-            tutorial_url = f"https://{session_id}.{tutorial_name}.{domain_name}/{query_string}"
+            base_url = f"https://{session_id}.{tutorial_name}.{domain_name}"
+            tutorial_url = f"{base_url}/{query_string}"
 
         except Exception as e:
             print(f"Error with ALB session setup: {e}")
@@ -165,7 +194,7 @@ def lambda_handler(event, context):
 
         # Send custom response if provided, otherwise default
         if custom_response_blocks:
-            send_custom_response(response_url, custom_response_blocks, tutorial_url)
+            send_custom_response(response_url, custom_response_blocks, base_url, tutorial_port, query_string)
         else:
             send_response(response_url, f"Your container is ready at `{tutorial_url}`")
 
@@ -185,15 +214,17 @@ def send_response(url, message):
         print("Failed to post to Slack:", e)
 
 
-def send_custom_response(url, blocks_json, tutorial_url):
+def send_custom_response(url, blocks_json, base_url, query_string):
     """Send a custom blocks response to Slack with variable substitution"""
     try:
         # Parse the blocks JSON and substitute variables
         blocks = json.loads(blocks_json)
 
-        # Replace placeholders in the blocks
+        # Simple variable substitution
         blocks_str = json.dumps(blocks)
-        blocks_str = blocks_str.replace("{{TUTORIAL_URL}}", tutorial_url)
+        blocks_str = blocks_str.replace("{{BASE_URL}}", base_url)
+        blocks_str = blocks_str.replace("{{QUERY_STRING}}", query_string)
+
         blocks = json.loads(blocks_str)
 
         response = requests.post(url, json={
@@ -203,5 +234,4 @@ def send_custom_response(url, blocks_json, tutorial_url):
         print(f"Slack response status: {response.status_code}")
     except Exception as e:
         print("Failed to post custom response to Slack:", e)
-        # Fallback to simple text response
-        send_response(url, f"Your container is ready at `{tutorial_url}`")
+        send_response(url, f"Your container is ready at `{base_url}{query_string}`")
