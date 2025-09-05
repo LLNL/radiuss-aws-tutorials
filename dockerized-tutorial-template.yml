@@ -308,6 +308,17 @@ Resources:
         - Key: Name
           Value: !Sub "${TutorialName}-TargetGroup"
 
+  ReverseProxyTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub "${TutorialName}-lambda-tg"
+      TargetType: lambda
+      Targets:
+        - Id: !GetAtt ReverseProxyLambda.Arn
+      Tags:
+        - Key: Name
+          Value: !Sub "${TutorialName}-Lambda-TargetGroup"
+
   SSLCertificate:
     Type: AWS::CertificateManager::Certificate
     Properties:
@@ -478,7 +489,7 @@ Resources:
       Code:
         S3Bucket: hpcic-tutorials-lambdas
         S3Key: slackbot-ec2/launch-function.zip
-        S3ObjectVersion: "zumHIhGNVPc4X2IIQzvEyIF3S0iVeiqM"
+        S3ObjectVersion: "oD1NYrM2FfHKqJQPrGBUNvM9dXG0nNti"
 
   SlackBotNotifyLambda:
     Type: AWS::Lambda::Function
@@ -491,7 +502,24 @@ Resources:
       Code:
         S3Bucket: hpcic-tutorials-lambdas
         S3Key: slackbot-ec2/notify-function.zip
-        S3ObjectVersion: "0NyneshI9vweJpx1b3jz55CpVWW1Tozu"
+        S3ObjectVersion: "pzyTHrsJDwiOEQKp7R4Ss_EoxyTb_iBg"
+
+  ReverseProxyLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-ReverseProxy"
+      Handler: reverse-proxy-function.lambda_handler
+      Runtime: python3.12
+      Role: !GetAtt ReverseProxyLambdaRole.Arn
+      Timeout: 30
+      Environment:
+        Variables:
+          DEFAULT_PORT: !Ref TutorialPort
+          ADDITIONAL_PORTS: !Join [",", !Ref AdditionalPorts]
+      Code:
+        S3Bucket: hpcic-tutorials-lambdas
+        S3Key: slackbot-ec2/reverse-proxy-function.zip
+        S3ObjectVersion: "KIoC.4u8ZoVylenrhZtD4qXNUokYXLBJ"
 
   SlackBotEventRule:
     Type: AWS::Events::Rule
@@ -564,19 +592,41 @@ Resources:
                 Action:
                   - secretsmanager:GetSecretValue
                 Resource: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:*-ecs-secret*"
-              - Effect: Allow
-                Action:
-                  - elasticloadbalancing:RegisterTargets
-                  - elasticloadbalancing:DeregisterTargets
-                  - elasticloadbalancing:DescribeTargetHealth
-                  - elasticloadbalancing:CreateTargetGroup
-                  - elasticloadbalancing:DeleteTargetGroup
-                  - elasticloadbalancing:DescribeTargetGroups
-                  - elasticloadbalancing:CreateRule
-                  - elasticloadbalancing:DeleteRule
-                  - elasticloadbalancing:DescribeRules
-                  - elasticloadbalancing:AddTags
-                Resource: "*"
+
+  ReverseProxyLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-ReverseProxyLambdaRole"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  ReverseProxyLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ReverseProxyLambda
+      Action: lambda:InvokeFunction
+      Principal: elasticloadbalancing.amazonaws.com
+      SourceArn: !Sub "arn:aws:elasticloadbalancing:${AWS::Region}:${AWS::AccountId}:targetgroup/${TutorialName}-lambda-tg/*"
+
+  ReverseProxyListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref ALBHTTPSListener
+      Priority: 100
+      Conditions:
+        - Field: host-header
+          Values:
+            - !Sub "*.${TutorialName}.${DomainName}"
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref ReverseProxyTargetGroup
 
   SlackHttpApi:
     Type: AWS::ApiGatewayV2::Api
@@ -626,6 +676,12 @@ Resources:
       LogGroupName: !Sub "/aws/lambda/${SlackBotLaunchLambda}"
       RetentionInDays: 7
 
+  ReverseProxyLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${ReverseProxyLambda}"
+      RetentionInDays: 7
+
   CleanupLambda:
     Type: AWS::Lambda::Function
     Properties:
@@ -637,7 +693,7 @@ Resources:
       Code:
         S3Bucket: hpcic-tutorials-lambdas
         S3Key: slackbot-ec2/cleanup-tasks-function.zip
-        S3ObjectVersion: "RwsXXoiZqSpccgnRONcIiW8n8cZFifuP"
+        S3ObjectVersion: "ltGZJfPauq.Ue84APNSucdSY0pq7xY8n"
 
   CleanupLambdaRole:
     Type: AWS::IAM::Role
@@ -671,21 +727,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - ec2:TerminateInstances
-                  - ec2:DescribeInstances
                 Resource: "*"
-              - Effect: Allow
-                Action:
-                  - elasticloadbalancing:DeregisterTargets
-                  - elasticloadbalancing:DescribeTargetHealth
-                  - elasticloadbalancing:DeleteTargetGroup
-                  - elasticloadbalancing:DescribeTargetGroups
-                  - elasticloadbalancing:DeleteRule
-                  - elasticloadbalancing:DescribeRules
-                Resource: "*"
-              - Effect: Allow
-                Action:
-                  - cloudformation:DescribeStacks
-                Resource: !Sub "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${AWS::StackName}/*"
 
   CleanupScheduleRule:
     Type: AWS::Events::Rule
@@ -699,7 +741,6 @@ Resources:
           Input: !Sub |
             {
               "cluster_name": "${Cluster}",
-              "stack_name": "${AWS::StackName}",
               "timeout_hours": ${TaskTimeoutHours}
             }
 
@@ -831,13 +872,7 @@ Outputs:
                   --output text 2>/dev/null)
 
                 if [ "$PUBLIC_IP" != "None" ] && [ -n "$PUBLIC_IP" ]; then
-                  # Directly invoke notify Lambda to create ALB rules
-                  aws lambda invoke \
-                    --function-name "${AWS::StackName}-SlackBotNotify" \
-                    --cli-binary-format raw-in-base64-out \
-                    --payload "{\"detail\":{\"task_arn\":\"$TASK_ARN\",\"cluster\":\"${Cluster}\",\"stack\":\"${AWS::StackName}\",\"response_url\":\"\",\"user\":\"cli-$TASK_ID\",\"port\":\"${TutorialPort}\",\"query_string\":\"${TutorialQueryString}\",\"custom_response_blocks\":\"\"}}" \
-                    /tmp/lambda-response.json > /dev/null 2>&1
-
+                  # Generate HTTPS URL using Lambda reverse proxy (no setup needed)
                   SESSION_ID=$(echo "$PUBLIC_IP" | tr '.' '-')
                   echo "$TASK_ID: https://$SESSION_ID.${TutorialName}.${DomainName}${TutorialQueryString}"
                   return 0
