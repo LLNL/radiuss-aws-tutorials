@@ -13,7 +13,7 @@
   },
   {
     "ParameterKey": "AdditionalPorts",
-    "ParameterValue": "8000"
+    "ParameterValue": "8000,8080"
   },
   {
     "ParameterKey": "TutorialName",
@@ -45,6 +45,6 @@
   },
   {
     "ParameterKey": "CustomResponseBlocks",
-    "ParameterValue": "[{\"type\":\"divider\"},{\"type\":\"section\",\"text\":{\"type\":\"mrkdwn\",\"text\":\"*Welcome to the MFEM AWS Tutorial*\\nYou can follow the tutorial at your own pace using https://mfem.org/tutorial.\\nYour development container is ready at `{{BASE_URL}}{{QUERY_STRING}}`\\nThe interactive visualization tool can be accessed at `{{BASE_URL}}/port8000/live`\\n\"},\"accessory\":{\"type\":\"image\",\"image_url\":\"https://mfem.org/img/logo-300@2x.png\",\"alt_text\":\"MFEM\"}},{\"type\":\"divider\"}]"
+    "ParameterValue": "[{\"type\":\"divider\"},{\"type\":\"section\",\"text\":{\"type\":\"mrkdwn\",\"text\":\"*Welcome to the MFEM AWS Tutorial*\\nYou can follow the tutorial at your own pace using https://mfem.org/tutorial.\\nYour development container is ready at `{{BASE_URL}}{{QUERY_STRING}}`\\nThe interactive visualization tool can be accessed at `{{EXTRA_URL_1}}/live`\\n\"},\"accessory\":{\"type\":\"image\",\"image_url\":\"https://mfem.org/img/logo-300@2x.png\",\"alt_text\":\"MFEM\"}},{\"type\":\"divider\"}]"
   }
 ]

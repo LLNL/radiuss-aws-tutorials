@@ -49,20 +49,21 @@ def lambda_handler(event, context):
 
         query_string = detail.get("query_string", "")
         custom_response_blocks = detail.get("custom_response_blocks", "")
+        default_port = detail.get("default_port", "3000")
+        additional_ports = detail.get("additional_ports", "")
 
-        # Generate HTTPS URL using Lambda reverse proxy routing
         domain_name = detail.get("domain_name")
         tutorial_name = detail.get("tutorial_name")
         session_id = generate_session_id(public_ip)
-        base_url = f"https://{session_id}.{tutorial_name}.{domain_name}"
+
+        base_url = f"https://{session_id}-{default_port}.{tutorial_name}.{domain_name}"
         tutorial_url = f"{base_url}{query_string}"
 
         print(f"Tutorial accessible at: {tutorial_url}")
-        print(f"Lambda reverse proxy will route {session_id} -> {public_ip}")
 
         # Send custom response if provided, otherwise default
         if custom_response_blocks:
-            send_custom_response(response_url, custom_response_blocks, base_url, query_string)
+            send_custom_response(response_url, custom_response_blocks, base_url, query_string, session_id, tutorial_name, domain_name, additional_ports)
         else:
             send_response(response_url, f"Your container is ready at `{tutorial_url}`")
 
@@ -82,7 +83,7 @@ def send_response(url, message):
         print("Failed to post to Slack:", e)
 
 
-def send_custom_response(url, blocks_json, base_url, query_string):
+def send_custom_response(url, blocks_json, base_url, query_string, session_id, tutorial_name, domain_name, additional_ports):
     """Send a custom blocks response to Slack with variable substitution"""
     try:
         # Parse the blocks JSON and substitute variables
@@ -92,6 +93,14 @@ def send_custom_response(url, blocks_json, base_url, query_string):
         blocks_str = json.dumps(blocks)
         blocks_str = blocks_str.replace("{{BASE_URL}}", base_url)
         blocks_str = blocks_str.replace("{{QUERY_STRING}}", query_string)
+
+        # Generate EXTRA_URL_N for additional ports
+        if additional_ports and additional_ports != "NONE":
+            ports = [port.strip() for port in additional_ports.split(',') if port.strip()]
+            for i, port in enumerate(ports, 1):
+                extra_url = f"https://{session_id}-{port}.{tutorial_name}.{domain_name}"
+                blocks_str = blocks_str.replace(f"{{{{EXTRA_URL_{i}}}}}", extra_url)
+                print(f"Generated EXTRA_URL_{i}: {extra_url}")
 
         blocks = json.loads(blocks_str)
 

@@ -16,17 +16,6 @@ aws s3 cp notify-function.zip s3://hpcic-tutorials-lambdas/slackbot-ec2/notify-f
 rm -rf notify-package
 rm notify-function.zip
 
-# reverse proxy function
-mkdir -p reverse-proxy-package
-cd reverse-proxy-package
-python3 -m pip install urllib3 -t .
-cp ../reverse-proxy-function.py .
-zip -r ../reverse-proxy-function.zip *
-cd ..
-aws s3 cp reverse-proxy-function.zip s3://hpcic-tutorials-lambdas/slackbot-ec2/reverse-proxy-function.zip
-rm -rf reverse-proxy-package
-rm reverse-proxy-function.zip
-
 # cleanup function
 zip cleanup-tasks-function.zip cleanup-tasks-function.py
 aws s3 cp cleanup-tasks-function.zip s3://hpcic-tutorials-lambdas/slackbot-ec2/cleanup-tasks-function.zip

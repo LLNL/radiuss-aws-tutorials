@@ -115,6 +115,7 @@ def lambda_handler(event, context):
         custom_response_blocks = get_cf_output(outputs, "CustomResponseBlocks")
         domain_name = get_cf_output(outputs, "DomainName")
         tutorial_name = get_cf_output(outputs, "TutorialName")
+        additional_ports = get_cf_output(outputs, "AdditionalPorts")
 
         # Emit event for async follow-up
         events.put_events(
@@ -128,6 +129,8 @@ def lambda_handler(event, context):
                     "response_url": response_url,
                     "user": user,
                     "port": tutorial_port,
+                    "default_port": tutorial_port,
+                    "additional_ports": additional_ports,
                     "query_string": tutorial_query_string,
                     "custom_response_blocks": custom_response_blocks,
                     "domain_name": domain_name,
