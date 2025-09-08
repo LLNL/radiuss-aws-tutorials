@@ -355,8 +355,7 @@ Resources:
               <h1>Tutorial Session Not Found</h1>
               <p>The requested tutorial session could not be found. Please:</p>
               <ul>
-                <li>Check your URL for typos</li>
-                <li>Request a new tutorial session via Slack</li>
+                <li>Try refreshing the page after waiting a few seconds</li>
                 <li>Contact support if this issue persists</li>
               </ul>
               </body></html>
