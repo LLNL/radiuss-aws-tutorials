@@ -193,7 +193,7 @@ Resources:
               awslogs-stream-prefix: ecs
           Environment:
             - Name: LAST_UPDATED
-              Value: "2025-08-20-v1"
+              Value: "2025-09-08-v1"
           HealthCheck:
             Command:
               - CMD-SHELL
@@ -478,7 +478,7 @@ Resources:
       Code:
         S3Bucket: hpcic-tutorials-lambdas
         S3Key: slackbot-ec2/launch-function.zip
-        S3ObjectVersion: "zumHIhGNVPc4X2IIQzvEyIF3S0iVeiqM"
+        S3ObjectVersion: "xnTfNSsWio19Zyd5DAplhXGYnkzZEVdJ"
 
   SlackBotNotifyLambda:
     Type: AWS::Lambda::Function
@@ -491,7 +491,7 @@ Resources:
       Code:
         S3Bucket: hpcic-tutorials-lambdas
         S3Key: slackbot-ec2/notify-function.zip
-        S3ObjectVersion: "Z9c9PqtAijjFPD6avCYi_dynL4H_6yfs"
+        S3ObjectVersion: "_ca8vJvViCTrXvtjTpN6eJ31.vCu6PAJ"
 
   SlackBotEventRule:
     Type: AWS::Events::Rule
@@ -637,7 +637,7 @@ Resources:
       Code:
         S3Bucket: hpcic-tutorials-lambdas
         S3Key: slackbot-ec2/cleanup-tasks-function.zip
-        S3ObjectVersion: "RwsXXoiZqSpccgnRONcIiW8n8cZFifuP"
+        S3ObjectVersion: "lhhlq7IHD5.6vjY.J3Uuiop9pNuypONs"
 
   CleanupLambdaRole:
     Type: AWS::IAM::Role
