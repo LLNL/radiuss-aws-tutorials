@@ -63,7 +63,9 @@ DIST_ARN=$(aws imagebuilder create-distribution-configuration \
       \"amiTags\": {
         \"Name\": \"$AMI_NAME\",
         \"DockerImage\": \"$DOCKER_IMAGE\",
-        \"BuildDate\": \"{{ imagebuilder:buildDate }}\"
+        \"BuildDate\": \"{{ imagebuilder:buildDate }}\",
+        \"Environment\": \"tutorial\",
+        \"CreatedBy\": \"imagebuilder-script\"
       }
     }
   }]" \

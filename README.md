@@ -124,6 +124,9 @@ echo "Running tasks: $RUNNING_TASKS, Available instances: $INSTANCES"
 aws cloudformation delete-stack --stack-name ${TUTORIAL_NAME}-tutorial
 ```
 
+## Delete AMIs
+See `ami/README.md` for instructions.
+
 # Slackbot integration
 Go to the [Slack API](https://api.slack.com/). Choose "Your apps" and create or choose existing app, then go to slash commands. You just need to make a command name, description, and set the request URL to:
 
