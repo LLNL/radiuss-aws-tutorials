@@ -99,7 +99,7 @@ Delete all non-default ALB rules:
 ``` bash
 # Get the ALB listener ARN
 ALB_LISTENER_ARN=$(aws cloudformation describe-stacks \
-  --stack-name axom-tutorial \
+  --stack-name "${TUTORIAL_NAME}-tutorial" \
   --query "Stacks[0].Outputs[?OutputKey=='ALBHTTPSListenerArn'].OutputValue" \
   --output text)
 
