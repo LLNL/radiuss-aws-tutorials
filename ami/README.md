@@ -127,3 +127,23 @@ aws ec2 authorize-security-group-ingress \
 
 echo "Created security group: $SG_ID"
 ```
+
+
+# Clean up AMIs and associated resources
+After deleting your stack, clean up the AMIs to avoid ongoing storage costs. Below are some helpful commands:
+``` bash
+# Replace "tutorial-name"
+TUTORIAL_NAME="tutorial-name"
+# Get AMI IDs
+aws ec2 describe-images --owners self --filters "Name=name,Values=*${TUTORIAL_NAME}*" --query 'Images[*].[ImageId,Name,CreationDate]' --output table
+# Get snapshot IDs (replace ami-id)
+aws ec2 describe-images --image-ids <ami-id> --query 'Images[0].BlockDeviceMappings[*].Ebs.SnapshotId' --output text
+# Deregister ami
+aws ec2 deregister-image --image-id <ami-id>
+# Delete snapshot
+aws ec2 delete-snapshot --snapshot-id <snapshot_id>
+# Delete SSM parameter
+aws ssm delete-parameter --name "/hpcic-tutorials/amis/${TUTORIAL_NAME}-tutorial"
+```
+
+```
