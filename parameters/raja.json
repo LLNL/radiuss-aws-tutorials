@@ -33,11 +33,11 @@
   },
   {
     "ParameterKey": "PasswordSecretsName",
-    "ParameterValue": ""
+    "ParameterValue": "raja-tutorial-secret"
   },
   {
     "ParameterKey": "PasswordSecretsKey",
-    "ParameterValue": ""
+    "ParameterValue": "raja-tutorial-slack-password"
   },
   {
     "ParameterKey": "CustomResponseBlocks",

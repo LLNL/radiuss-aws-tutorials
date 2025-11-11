@@ -169,6 +169,16 @@ aws cloudformation describe-stacks \
 
 Note that this URL remains the same even when the stack is updated, only need to redo this step if you delete and re-create the stack.
 
+## Adding password
+``` bash
+# Create secret with key-value pair
+aws secretsmanager create-secret \
+    --name "raja-tutorial-secret" \
+    --description "Password for RAJA tutorial Slack access" \
+    --secret-string '{"raja-tutorial-slack-password":"YOUR_PASSWORD_HERE"}'
+```
+Update the secret name and key in the parameters json file, e.g. `raja.json`.
+
 # License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
