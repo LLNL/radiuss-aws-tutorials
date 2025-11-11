@@ -171,18 +171,18 @@ Resources:
               Value: "1"
           PortMappings:
             - ContainerPort: !Ref TutorialPort
-              HostPort: !Ref TutorialPort
+              HostPort: 0
               Protocol: tcp
             - !If
               - HasSecondPort
               - ContainerPort: !Select [0, !Ref AdditionalPorts]
-                HostPort: !Select [0, !Ref AdditionalPorts]
+                HostPort: 0
                 Protocol: tcp
               - !Ref "AWS::NoValue"
             - !If
               - HasThirdPort
               - ContainerPort: !Select [1, !Ref AdditionalPorts]
-                HostPort: !Select [1, !Ref AdditionalPorts]
+                HostPort: 0
                 Protocol: tcp
               - !Ref "AWS::NoValue"
           LogConfiguration:
@@ -226,34 +226,6 @@ Resources:
           ToPort: 22
           CidrIp: 0.0.0.0/0
 
-  TutorialPortIngressRule:
-    Type: AWS::EC2::SecurityGroupIngress
-    Properties:
-      GroupId: !Ref SecurityGroup
-      IpProtocol: tcp
-      FromPort: !Ref TutorialPort
-      ToPort: !Ref TutorialPort
-      CidrIp: 0.0.0.0/0
-
-  AdditionalPort1IngressRule:
-    Type: AWS::EC2::SecurityGroupIngress
-    Condition: HasSecondPort
-    Properties:
-      GroupId: !Ref SecurityGroup
-      IpProtocol: tcp
-      FromPort: !Select [0, !Ref AdditionalPorts]
-      ToPort: !Select [0, !Ref AdditionalPorts]
-      CidrIp: 0.0.0.0/0
-
-  AdditionalPort2IngressRule:
-    Type: AWS::EC2::SecurityGroupIngress
-    Condition: HasThirdPort
-    Properties:
-      GroupId: !Ref SecurityGroup
-      IpProtocol: tcp
-      FromPort: !Select [1, !Ref AdditionalPorts]
-      ToPort: !Select [1, !Ref AdditionalPorts]
-      CidrIp: 0.0.0.0/0
 
   # ALB Resources
   TutorialALB:
