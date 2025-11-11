@@ -200,10 +200,10 @@ Resources:
               - !Sub
                 - "curl -f http://127.0.0.1:${Port} || exit 1"
                 - Port: !Ref TutorialPort
-            Interval: 30
-            Timeout: 5
-            Retries: 3
-            StartPeriod: 30
+            Interval: 15
+            Timeout: 10
+            Retries: 10
+            StartPeriod: 60
 
   LogGroup:
     Type: AWS::Logs::LogGroup
@@ -272,10 +272,10 @@ Resources:
       HealthCheckProtocol: HTTP
       HealthCheckPort: !Ref TutorialPort
       HealthCheckPath: /
-      HealthCheckIntervalSeconds: 30
-      HealthCheckTimeoutSeconds: 5
+      HealthCheckIntervalSeconds: 20
+      HealthCheckTimeoutSeconds: 10
       HealthyThresholdCount: 2
-      UnhealthyThresholdCount: 5
+      UnhealthyThresholdCount: 10
       Tags:
         - Key: Name
           Value: !Sub "${TutorialName}-TargetGroup"
