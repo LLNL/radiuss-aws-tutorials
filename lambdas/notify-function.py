@@ -108,10 +108,10 @@ def lambda_handler(event, context):
                 HealthCheckProtocol='HTTP',
                 HealthCheckPort=str(main_host_port),
                 HealthCheckPath='/',
-                HealthCheckIntervalSeconds=30,
-                HealthCheckTimeoutSeconds=5,
+                HealthCheckIntervalSeconds=20,
+                HealthCheckTimeoutSeconds=10,
                 HealthyThresholdCount=2,
-                UnhealthyThresholdCount=5,
+                UnhealthyThresholdCount=10,
                 Tags=[
                     {'Key': 'session-id', 'Value': session_id},
                     {'Key': 'user', 'Value': user},
