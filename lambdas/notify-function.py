@@ -57,7 +57,28 @@ def lambda_handler(event, context):
         instance_desc = ec2.describe_instances(InstanceIds=[instance_id])
         public_ip = instance_desc["Reservations"][0]["Instances"][0]["PublicIpAddress"]
 
-        tutorial_port = int(detail.get("port"))
+        # Extract port mappings from the running task
+        container = task["containers"][0]
+        network_bindings = container.get("networkBindings", [])
+        if not network_bindings:
+            raise Exception("No network bindings found for container")
+
+        # Create a mapping of container ports to host ports
+        port_mappings = {}
+        for binding in network_bindings:
+            container_port = binding["containerPort"]
+            host_port = binding["hostPort"]
+            port_mappings[container_port] = host_port
+            print(f"Container port: {container_port} → Host port: {host_port}")
+
+        # Get the main tutorial port
+        tutorial_port = int(detail.get("port"))  # Main container port
+        main_host_port = port_mappings.get(tutorial_port)
+        if not main_host_port:
+            raise Exception(f"Could not find host port mapping for tutorial port {tutorial_port}")
+
+        print(f"Main tutorial port {tutorial_port} maps to host port {main_host_port}")
+
         query_string = detail.get("query_string", "")
         custom_response_blocks = detail.get("custom_response_blocks", "")
         stack_name = detail.get("stack")
@@ -81,11 +102,11 @@ def lambda_handler(event, context):
             user_target_group_response = elbv2.create_target_group(
                 Name=user_target_group_name,
                 Protocol='HTTP',
-                Port=tutorial_port,
+                Port=main_host_port,
                 VpcId=vpc_id,
                 TargetType='instance',
                 HealthCheckProtocol='HTTP',
-                HealthCheckPort=str(tutorial_port),
+                HealthCheckPort=str(main_host_port),
                 HealthCheckPath='/',
                 HealthCheckIntervalSeconds=30,
                 HealthCheckTimeoutSeconds=5,
@@ -106,7 +127,7 @@ def lambda_handler(event, context):
                 Targets=[
                     {
                         'Id': instance_id,
-                        'Port': tutorial_port
+                        'Port': main_host_port
                     }
                 ]
             )
@@ -161,7 +182,7 @@ def lambda_handler(event, context):
         except Exception as e:
             print(f"Error with ALB session setup: {e}")
             # Fallback to direct HTTP URL if ALB fails
-            tutorial_url = f"http://{public_ip}:{tutorial_port}{query_string}"
+            tutorial_url = f"http://{public_ip}:{main_host_port}{query_string}"
 
         # Send custom response if provided, otherwise default
         if custom_response_blocks:
