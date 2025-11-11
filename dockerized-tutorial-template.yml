@@ -425,7 +425,7 @@ Resources:
           Status: ENABLED
           TargetCapacity: 100
           MinimumScalingStepSize: 1
-          MaximumScalingStepSize: 1
+          MaximumScalingStepSize: 10
         ManagedTerminationProtection: ENABLED
 
   ClusterCapacityProviderAssociation:
