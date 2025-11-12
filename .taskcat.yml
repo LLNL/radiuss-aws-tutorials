@@ -1,0 +1,23 @@
+project:
+  name: radiuss-aws-tutorials
+  owner: drwenski1@llnl.gov
+  regions:
+    - us-east-1
+
+tests:
+  minimal-nginx:
+    template: dockerized-tutorial-template.yml
+    regions:
+      - us-east-1
+    parameters:
+      TutorialAMI: ami-0bb1f3a3686e883b8
+      TutorialImage: nginx:latest
+      TutorialPort: 80
+      TutorialName: taskcat-test
+      TaskTimeoutHours: 1
+      InstanceType: t3.micro
+      DesiredCapacity: 0
+      RequireGPU: false
+      PasswordSecretsName: ""
+      PasswordSecretsKey: ""
+      CustomResponseBlocks: ""
