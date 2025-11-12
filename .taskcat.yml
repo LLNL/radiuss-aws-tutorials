@@ -17,7 +17,7 @@ tests:
       TaskTimeoutHours: 1
       InstanceType: t3.micro
       DesiredCapacity: 0
-      RequireGPU: false
+      RequireGPU: "false"
       PasswordSecretsName: ""
       PasswordSecretsKey: ""
       CustomResponseBlocks: ""
