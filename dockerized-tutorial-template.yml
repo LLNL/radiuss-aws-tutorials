@@ -54,6 +54,14 @@ Parameters:
     Type: String
     Description: JSON string for custom Slack blocks response when ready (if empty, uses default text response)
     Default: ""
+  DomainName:
+    Type: String
+    Description: Base domain name for HTTPS tutorials
+    Default: "hpcic.training"
+  HostedZoneId:
+    Type: String
+    Description: Existing Route 53 Hosted Zone ID for the domain
+    Default: "Z00533746QS6KB6QTFC2"
 
 Conditions:
   HasKeyPair: !Not [!Equals [!Ref KeyPairName, ""]]
@@ -111,6 +119,23 @@ Resources:
       SubnetId: !Ref PublicSubnet
       RouteTableId: !Ref PublicRouteTable
 
+  SecondaryPublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.2.0/24
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select [1, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub "${TutorialName}-SecondaryPublicSubnet"
+
+  SecondarySubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref SecondaryPublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
   Cluster:
     Type: AWS::ECS::Cluster
     Properties:
@@ -146,18 +171,18 @@ Resources:
               Value: "1"
           PortMappings:
             - ContainerPort: !Ref TutorialPort
-              HostPort: !Ref TutorialPort
+              HostPort: 0
               Protocol: tcp
             - !If
               - HasSecondPort
               - ContainerPort: !Select [0, !Ref AdditionalPorts]
-                HostPort: !Select [0, !Ref AdditionalPorts]
+                HostPort: 0
                 Protocol: tcp
               - !Ref "AWS::NoValue"
             - !If
               - HasThirdPort
               - ContainerPort: !Select [1, !Ref AdditionalPorts]
-                HostPort: !Select [1, !Ref AdditionalPorts]
+                HostPort: 0
                 Protocol: tcp
               - !Ref "AWS::NoValue"
           LogConfiguration:
@@ -168,17 +193,17 @@ Resources:
               awslogs-stream-prefix: ecs
           Environment:
             - Name: LAST_UPDATED
-              Value: "2025-08-20-v1"
+              Value: "2025-09-08-v1"
           HealthCheck:
             Command:
               - CMD-SHELL
               - !Sub
                 - "curl -f http://127.0.0.1:${Port} || exit 1"
                 - Port: !Ref TutorialPort
-            Interval: 30
-            Timeout: 5
-            Retries: 3
-            StartPeriod: 30
+            Interval: 15
+            Timeout: 10
+            Retries: 10
+            StartPeriod: 60
 
   LogGroup:
     Type: AWS::Logs::LogGroup
@@ -201,34 +226,131 @@ Resources:
           ToPort: 22
           CidrIp: 0.0.0.0/0
 
-  TutorialPortIngressRule:
-    Type: AWS::EC2::SecurityGroupIngress
-    Properties:
-      GroupId: !Ref SecurityGroup
-      IpProtocol: tcp
-      FromPort: !Ref TutorialPort
-      ToPort: !Ref TutorialPort
-      CidrIp: 0.0.0.0/0
 
-  AdditionalPort1IngressRule:
-    Type: AWS::EC2::SecurityGroupIngress
-    Condition: HasSecondPort
+  # ALB Resources
+  TutorialALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
-      GroupId: !Ref SecurityGroup
-      IpProtocol: tcp
-      FromPort: !Select [0, !Ref AdditionalPorts]
-      ToPort: !Select [0, !Ref AdditionalPorts]
-      CidrIp: 0.0.0.0/0
+      Name: !Sub "${TutorialName}-alb"
+      Type: application
+      Scheme: internet-facing
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+      Subnets:
+        - !Ref PublicSubnet
+        - !Ref SecondaryPublicSubnet
+      Tags:
+        - Key: Name
+          Value: !Sub "${TutorialName}-ALB"
 
-  AdditionalPort2IngressRule:
-    Type: AWS::EC2::SecurityGroupIngress
-    Condition: HasThirdPort
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupId: !Ref SecurityGroup
-      IpProtocol: tcp
-      FromPort: !Select [1, !Ref AdditionalPorts]
-      ToPort: !Select [1, !Ref AdditionalPorts]
-      CidrIp: 0.0.0.0/0
+      GroupDescription: Security group for Tutorial ALB
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub "${TutorialName}-ALB-SecurityGroup"
+
+  TutorialTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub "${TutorialName}-targets"
+      Protocol: HTTP
+      Port: !Ref TutorialPort
+      VpcId: !Ref VPC
+      TargetType: instance
+      HealthCheckProtocol: HTTP
+      HealthCheckPort: !Ref TutorialPort
+      HealthCheckPath: /
+      HealthCheckIntervalSeconds: 20
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 10
+      Tags:
+        - Key: Name
+          Value: !Sub "${TutorialName}-TargetGroup"
+
+  SSLCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Sub "*.${DomainName}"
+      SubjectAlternativeNames:
+        - !Sub "*.${TutorialName}.${DomainName}"
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: !Sub "*.${DomainName}"
+          HostedZoneId: !Ref HostedZoneId
+        - DomainName: !Sub "*.${TutorialName}.${DomainName}"
+          HostedZoneId: !Ref HostedZoneId
+      Tags:
+        - Key: Name
+          Value: !Sub "${TutorialName}-SSL-Certificate"
+
+  ALBHTTPListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref TutorialALB
+      Protocol: HTTP
+      Port: 80
+      DefaultActions:
+        - Type: redirect
+          RedirectConfig:
+            Protocol: HTTPS
+            Port: 443
+            StatusCode: HTTP_301
+
+  ALBHTTPSListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref TutorialALB
+      Protocol: HTTPS
+      Port: 443
+      Certificates:
+        - CertificateArn: !Ref SSLCertificate
+      DefaultActions:
+        - Type: fixed-response
+          FixedResponseConfig:
+            StatusCode: 404
+            ContentType: text/html
+            MessageBody: |
+              <html><body>
+              <h1>Tutorial Session Not Found</h1>
+              <p>The requested tutorial session could not be found. Please:</p>
+              <ul>
+                <li>Try refreshing the page after waiting a few seconds</li>
+                <li>Contact support if this issue persists</li>
+              </ul>
+              </body></html>
+
+  TutorialDNSRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub "${TutorialName}.${DomainName}"
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt TutorialALB.DNSName
+        HostedZoneId: !GetAtt TutorialALB.CanonicalHostedZoneID
+
+  TutorialWildcardDNSRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub "*.${TutorialName}.${DomainName}"
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt TutorialALB.DNSName
+        HostedZoneId: !GetAtt TutorialALB.CanonicalHostedZoneID
 
   ECSInstanceRole:
     Type: AWS::IAM::Role
@@ -303,7 +425,7 @@ Resources:
           Status: ENABLED
           TargetCapacity: 100
           MinimumScalingStepSize: 1
-          MaximumScalingStepSize: 1
+          MaximumScalingStepSize: 10
         ManagedTerminationProtection: ENABLED
 
   ClusterCapacityProviderAssociation:
@@ -327,7 +449,7 @@ Resources:
       Code:
         S3Bucket: hpcic-tutorials-lambdas
         S3Key: slackbot-ec2/launch-function.zip
-        S3ObjectVersion: "dSR7cZ.qTBDpX85e_j7JSdKZ_cs_0Q2i"
+        S3ObjectVersion: "xnTfNSsWio19Zyd5DAplhXGYnkzZEVdJ"
 
   SlackBotNotifyLambda:
     Type: AWS::Lambda::Function
@@ -340,7 +462,7 @@ Resources:
       Code:
         S3Bucket: hpcic-tutorials-lambdas
         S3Key: slackbot-ec2/notify-function.zip
-        S3ObjectVersion: "X4zwG5LDE0mg6pEV0MEQho_Lnlx3g46E"
+        S3ObjectVersion: "o59B8lYMCb7Od84KiMLN3HCQ8SEepzHw"
 
   SlackBotEventRule:
     Type: AWS::Events::Rule
@@ -412,7 +534,20 @@ Resources:
               - Effect: Allow
                 Action:
                   - secretsmanager:GetSecretValue
-                Resource: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:*-ecs-secret*"
+                Resource: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:*"
+              - Effect: Allow
+                Action:
+                  - elasticloadbalancing:RegisterTargets
+                  - elasticloadbalancing:DeregisterTargets
+                  - elasticloadbalancing:DescribeTargetHealth
+                  - elasticloadbalancing:CreateTargetGroup
+                  - elasticloadbalancing:DeleteTargetGroup
+                  - elasticloadbalancing:DescribeTargetGroups
+                  - elasticloadbalancing:CreateRule
+                  - elasticloadbalancing:DeleteRule
+                  - elasticloadbalancing:DescribeRules
+                  - elasticloadbalancing:AddTags
+                Resource: "*"
 
   SlackHttpApi:
     Type: AWS::ApiGatewayV2::Api
@@ -473,7 +608,7 @@ Resources:
       Code:
         S3Bucket: hpcic-tutorials-lambdas
         S3Key: slackbot-ec2/cleanup-tasks-function.zip
-        S3ObjectVersion: "tmV1d6F0VsY3.6CWCnLASx1UhGTFT38z"
+        S3ObjectVersion: "lhhlq7IHD5.6vjY.J3Uuiop9pNuypONs"
 
   CleanupLambdaRole:
     Type: AWS::IAM::Role
@@ -507,7 +642,21 @@ Resources:
               - Effect: Allow
                 Action:
                   - ec2:TerminateInstances
+                  - ec2:DescribeInstances
                 Resource: "*"
+              - Effect: Allow
+                Action:
+                  - elasticloadbalancing:DeregisterTargets
+                  - elasticloadbalancing:DescribeTargetHealth
+                  - elasticloadbalancing:DeleteTargetGroup
+                  - elasticloadbalancing:DescribeTargetGroups
+                  - elasticloadbalancing:DeleteRule
+                  - elasticloadbalancing:DescribeRules
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - cloudformation:DescribeStacks
+                Resource: !Sub "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${AWS::StackName}/*"
 
   CleanupScheduleRule:
     Type: AWS::Events::Rule
@@ -521,6 +670,7 @@ Resources:
           Input: !Sub |
             {
               "cluster_name": "${Cluster}",
+              "stack_name": "${AWS::StackName}",
               "timeout_hours": ${TaskTimeoutHours}
             }
 
@@ -591,6 +741,30 @@ Outputs:
     Description: JSON string for custom Slack blocks response when ready
     Value: !Ref CustomResponseBlocks
 
+  ALBDNSName:
+    Description: DNS name of the Application Load Balancer
+    Value: !GetAtt TutorialALB.DNSName
+
+  ALBHostedZoneId:
+    Description: Hosted zone ID of the Application Load Balancer
+    Value: !GetAtt TutorialALB.CanonicalHostedZoneID
+
+  TargetGroupArn:
+    Description: ARN of the target group
+    Value: !Ref TutorialTargetGroup
+
+  DomainName:
+    Description: Base domain name for tutorials
+    Value: !Ref DomainName
+
+  ALBHTTPSListenerArn:
+    Description: ARN of the HTTPS listener for dynamic rule creation
+    Value: !Ref ALBHTTPSListener
+
+  VPCId:
+    Description: VPC ID for target group creation
+    Value: !Ref VPC
+
   LaunchTasksCommand:
     Description: Bash function to launch N tutorial tasks through CLI
     Value: !Sub |
@@ -628,7 +802,15 @@ Outputs:
                   --output text 2>/dev/null)
 
                 if [ "$PUBLIC_IP" != "None" ] && [ -n "$PUBLIC_IP" ]; then
-                  echo "$TASK_ID: http://$PUBLIC_IP:$HOST_PORT${TutorialQueryString}"
+                  # Directly invoke notify Lambda to create ALB rules
+                  aws lambda invoke \
+                    --function-name "${AWS::StackName}-SlackBotNotify" \
+                    --cli-binary-format raw-in-base64-out \
+                    --payload "{\"detail\":{\"task_arn\":\"$TASK_ARN\",\"cluster\":\"${Cluster}\",\"stack\":\"${AWS::StackName}\",\"response_url\":\"\",\"user\":\"cli-$TASK_ID\",\"port\":\"${TutorialPort}\",\"query_string\":\"${TutorialQueryString}\",\"custom_response_blocks\":\"\"}}" \
+                    /tmp/lambda-response.json > /dev/null 2>&1
+
+                  SESSION_ID=$(echo "$PUBLIC_IP" | tr '.' '-')
+                  echo "$TASK_ID: https://$SESSION_ID.${TutorialName}.${DomainName}${TutorialQueryString}"
                   return 0
                 fi
               fi
@@ -655,40 +837,57 @@ Outputs:
 
         echo "Launching $N tasks..."
         TASK_ARNS=""
+        successful_launches=0
         for ((i = 1; i <= N; i++)); do
           TASK_ID="task-$(date +%s)-$i"
 
+          echo "Launching task $i of $N..."
           TASK_ARN=$(aws ecs run-task \
             --cluster ${Cluster} \
             --capacity-provider-strategy capacityProvider=${ECSCapacityProvider},weight=1 \
             --task-definition ${TaskDefinition} \
             --tags key=task-id,value=$TASK_ID key=launch-type,value=cli \
             --query 'tasks[0].taskArn' \
-            --output text)
+            --output text 2>/dev/null)
 
-          if [ -z "$TASK_ARNS" ]; then
-            TASK_ARNS="$TASK_ARN"
+          # Check if task launch was successful
+          if [ -n "$TASK_ARN" ] && [ "$TASK_ARN" != "None" ] && [ "$TASK_ARN" != "null" ] && [[ "$TASK_ARN" == arn:aws:ecs:* ]]; then
+            if [ -z "$TASK_ARNS" ]; then
+              TASK_ARNS="$TASK_ARN"
+            else
+              TASK_ARNS="$TASK_ARNS,$TASK_ARN"
+            fi
+            successful_launches=$((successful_launches + 1))
+            echo "Task $i launched successfully: $TASK_ID"
           else
-            TASK_ARNS="$TASK_ARNS,$TASK_ARN"
+            echo "WARNING: Task $i failed to launch (insufficient capacity or other error)"
           fi
         done
 
+        echo "Successfully launched $successful_launches out of $N requested tasks"
+
+        if [ $successful_launches -eq 0 ]; then
+          echo "ERROR: No tasks were launched successfully. Check cluster capacity and try again."
+          return 1
+        fi
+
         echo "Waiting for all task IPs..."
 
-        # Process each comma-separated ARN
-        OLD_IFS="$IFS"
-        IFS=','
-        for TASK_ARN in $TASK_ARNS; do
+        # Process each comma-separated ARN (only valid ones were added to the list)
+        echo "$TASK_ARNS" | tr ',' '\n' | while IFS= read -r TASK_ARN; do
           if [ -n "$TASK_ARN" ]; then
             TASK_ID=$(aws ecs list-tags-for-resource \
               --resource-arn "$TASK_ARN" \
               --query 'tags[?key==`task-id`].value' \
-              --output text)
+              --output text 2>/dev/null)
 
-            wait_for_task_url "$TASK_ID" "$TASK_ARN"
+            if [ -n "$TASK_ID" ] && [ "$TASK_ID" != "None" ]; then
+              wait_for_task_url "$TASK_ID" "$TASK_ARN"
+            else
+              echo "Warning: Could not get task ID for ARN: $TASK_ARN"
+            fi
           fi
         done
-        IFS="$OLD_IFS"
       }
 
       echo "Run 'launch_tasks N' to launch N tasks."
@@ -755,7 +954,8 @@ Outputs:
         [ "$PUBLIC_IP" = "None" ] && PUBLIC_IP="-"
 
         if [ "$PUBLIC_IP" != "-" ] && [ "$HOST_PORT" != "-" ]; then
-          echo "$TASK_ID,$SLACK_USER,$LAUNCH_TYPE,http://$PUBLIC_IP:$HOST_PORT${TutorialQueryString}"
+          SESSION_ID=$(echo "$PUBLIC_IP" | tr '.' '-')
+          echo "$TASK_ID,$SLACK_USER,$LAUNCH_TYPE,https://$SESSION_ID.${TutorialName}.${DomainName}${TutorialQueryString}"
         else
           echo "$TASK_ID,$SLACK_USER,$LAUNCH_TYPE,-"
         fi
@@ -808,7 +1008,8 @@ Outputs:
                 --output text)
 
               if [ "$PUBLIC_IP" != "None" ] && [ -n "$PUBLIC_IP" ]; then
-                echo "$TASK_ID,http://$PUBLIC_IP:$HOST_PORT${TutorialQueryString}"
+                SESSION_ID=$(echo "$PUBLIC_IP" | tr '.' '-')
+                echo "$TASK_ID,https://$SESSION_ID.${TutorialName}.${DomainName}${TutorialQueryString}"
               else
                 echo "$TASK_ID,-"
               fi

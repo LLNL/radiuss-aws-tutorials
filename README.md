@@ -10,6 +10,7 @@ To create an AMI see `ami/README.md`.
 Notes:
 - You must have your AWS credentials configured in `~/.aws/credentials`
 - You can set your region with `region = us-east-1` in `~/.aws/config`.
+- The HTTPS set up with the ALB limits number of instances to 100.
 
 # AWS CLI commands
 
@@ -86,12 +87,44 @@ eval "$(aws cloudformation describe-stacks \
   --output text)"
 ```
 
-## Delete all tasks
+## Cleanup tasks and rules
+Delete all tasks:
 ``` bash
 eval "$(aws cloudformation describe-stacks \
   --stack-name ${TUTORIAL_NAME}-tutorial \
   --query 'Stacks[0].Outputs[?OutputKey==`CleanupCommand`].OutputValue' \
   --output text)"
+```
+Delete all non-default ALB rules:
+``` bash
+# Get the ALB listener ARN
+ALB_LISTENER_ARN=$(aws cloudformation describe-stacks \
+  --stack-name "${TUTORIAL_NAME}-tutorial" \
+  --query "Stacks[0].Outputs[?OutputKey=='ALBHTTPSListenerArn'].OutputValue" \
+  --output text)
+
+# Delete all non-default rules
+aws elbv2 describe-rules --listener-arn $ALB_LISTENER_ARN \
+  --query 'Rules[?IsDefault==`false`].RuleArn' \
+  --output text | tr '\t' '\n' | while read -r rule_arn; do
+    if [ -n "$rule_arn" ]; then
+      echo "Deleting rule: $rule_arn"
+      aws elbv2 delete-rule --rule-arn "$rule_arn"
+    fi
+  done
+
+# Clean up all session-based target groups
+STACK_PREFIX="${TUTORIAL_NAME}-tutorial"
+aws elbv2 describe-target-groups \
+  --query "TargetGroups[?starts_with(TargetGroupName, \`$STACK_PREFIX-\`)].TargetGroupArn" \
+  --output text | tr '\t' '\n' | while read -r arn; do
+    if [ -n "$arn" ]; then
+      # Get the target group name for display
+      name=$(echo "$arn" | sed 's/.*targetgroup\/\([^/]*\)\/.*/\1/')
+      echo "Deleting target group: $name"
+      aws elbv2 delete-target-group --target-group-arn "$arn"
+    fi
+  done
 ```
 
 ## Scale instances manually
@@ -138,6 +171,16 @@ aws cloudformation describe-stacks \
 ```
 
 Note that this URL remains the same even when the stack is updated, only need to redo this step if you delete and re-create the stack.
+
+## Adding password
+``` bash
+# Create secret with key-value pair
+aws secretsmanager create-secret \
+    --name "raja-tutorial-secret" \
+    --description "Password for RAJA tutorial Slack access" \
+    --secret-string '{"raja-tutorial-slack-password":"YOUR_PASSWORD_HERE"}'
+```
+Update the secret name and key in the parameters json file, e.g. `raja.json`.
 
 # License
 
