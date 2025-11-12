@@ -62,12 +62,20 @@ Parameters:
     Type: String
     Description: Existing Route 53 Hosted Zone ID for the domain
     Default: "Z00533746QS6KB6QTFC2"
+  RequireGPU:
+    Type: String
+    Description: Whether to require GPU for containers (true/false)
+    Default: "true"
+    AllowedValues:
+      - "true"
+      - "false"
 
 Conditions:
   HasKeyPair: !Not [!Equals [!Ref KeyPairName, ""]]
   HasAdditionalPorts: !Not [!Equals [!Select [0, !Ref AdditionalPorts], "NONE"]]
   HasSecondPort: !And [!Condition HasAdditionalPorts, !Not [!Equals [!Select [0, !Ref AdditionalPorts], ""]]]
   HasThirdPort: !And [!Condition HasAdditionalPorts, !Not [!Equals [!Join [",", !Ref AdditionalPorts], !Select [0, !Ref AdditionalPorts]]]]
+  NeedsGPU: !Equals [!Ref RequireGPU, "true"]
 
 Resources:
   VPC:
@@ -166,9 +174,11 @@ Resources:
         - Name: !Sub "${TutorialName}-container"
           Image: !Ref TutorialImage
           MemoryReservation: 4096
-          ResourceRequirements:
-            - Type: GPU
-              Value: "1"
+          ResourceRequirements: !If
+            - NeedsGPU
+            - - Type: GPU
+                Value: "1"
+            - !Ref "AWS::NoValue"
           PortMappings:
             - ContainerPort: !Ref TutorialPort
               HostPort: 0
