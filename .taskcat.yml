@@ -13,7 +13,7 @@ tests:
       TutorialAMI: ami-0bb1f3a3686e883b8
       TutorialImage: nginx:latest
       TutorialPort: 80
-      TutorialName: $[taskcat_project_name]-$[taskcat_random-string]
+      TutorialName: tcat-$[taskcat_random-string]
       TaskTimeoutHours: 1
       InstanceType: t3.micro
       DesiredCapacity: 0
