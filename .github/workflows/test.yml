@@ -49,6 +49,7 @@ jobs:
 
       - name: Run infrastructure deployment test
         run: |
+          export tutorial_name=taskcat-test-${{ github.run_number }}
           taskcat test run --test-names minimal-nginx --no-delete
 
       - name: Upload TaskCat results
