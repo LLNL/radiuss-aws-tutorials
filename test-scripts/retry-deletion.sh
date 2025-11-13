@@ -2,34 +2,30 @@
 
 set -e
 
-echo "Post-hook: Checking for failed stack deletions..."
+echo "Checking for taskcat stacks..."
 
-# TaskCat sets these environment variables
 REGION="${AWS_DEFAULT_REGION:-us-east-1}"
 
-# Find stacks that failed to delete
+# Find all taskcat stacks for this project
 FAILED_STACKS=$(aws cloudformation list-stacks \
   --region $REGION \
-  --stack-status-filter DELETE_FAILED \
   --query 'StackSummaries[?contains(StackName, `tCaT-radiuss-aws-tutorials`)].StackName' \
   --output text)
 
 if [ -z "$FAILED_STACKS" ]; then
-  echo "No failed stack deletions found. Exiting."
+  echo "No stacks found. Exiting."
   exit 0
 fi
 
-echo "Found failed stacks: $FAILED_STACKS"
+echo "Found stacks: $FAILED_STACKS"
 
 # Wait for AWS to catch up
 echo "Waiting 120 seconds for AWS eventual consistency..."
 sleep 120
 
-# Retry deletion for each failed stack
 for STACK in $FAILED_STACKS; do
-  echo "Retrying deletion for stack: $STACK"
+  echo "Deleting $STACK"
 
-  # Try to delete the stack again
   aws cloudformation delete-stack \
     --stack-name "$STACK" \
     --region $REGION \
@@ -43,4 +39,4 @@ for STACK in $FAILED_STACKS; do
     || echo "Stack $STACK deletion still failed (manual cleanup needed)"
 done
 
-echo "Post-hook completed."
+echo "Deletions completed."
