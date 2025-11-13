@@ -90,7 +90,8 @@ def lambda_handler(event, context):
                         {
                             "response_type": "ephemeral",
                             "text": (
-                                f"You already have a running task for `{stack_name}`. Only one task per user is allowed."
+                                f"You already have a running task for `{stack_name}`."
+                                "Only one task per user is allowed."
                             ),
                         }
                     ),
