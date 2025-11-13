@@ -1,6 +1,7 @@
-import boto3
 import json
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
+
+import boto3
 
 
 def get_cf_output(stack_name, key):

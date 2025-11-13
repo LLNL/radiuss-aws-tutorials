@@ -1,6 +1,7 @@
-import boto3
-import time
 import json
+import time
+
+import boto3
 import requests
 
 ecs = boto3.client("ecs")

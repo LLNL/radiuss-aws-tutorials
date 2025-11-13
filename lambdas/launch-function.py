@@ -1,9 +1,10 @@
 import base64
 import json
+import time
+import urllib.parse
+
 import boto3
 from botocore.exceptions import ClientError
-import urllib.parse
-import time
 
 cf = boto3.client("cloudformation")
 ecs = boto3.client("ecs")
