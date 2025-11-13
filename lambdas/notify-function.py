@@ -8,6 +8,7 @@ ec2 = boto3.client("ec2")
 elbv2 = boto3.client("elbv2")
 cf = boto3.client("cloudformation")
 
+
 def get_cf_output(stack_name, key):
     """Get CloudFormation output value by key"""
     stack = cf.describe_stacks(StackName=stack_name)["Stacks"][0]
@@ -17,9 +18,11 @@ def get_cf_output(stack_name, key):
             return output["OutputValue"]
     raise Exception(f"Output key {key} not found in stack {stack_name}")
 
+
 def generate_session_id(public_ip):
     """Generate unique session ID using EC2 public IP"""
-    return public_ip.replace('.', '-')
+    return public_ip.replace(".", "-")
+
 
 def lambda_handler(event, context):
     print("Received event:", json.dumps(event, indent=2))
@@ -50,8 +53,7 @@ def lambda_handler(event, context):
         container_instance_arn = task["containerInstanceArn"]
         # Get the actual EC2 instance ID from the container instance
         container_instances = ecs.describe_container_instances(
-            cluster=cluster,
-            containerInstances=[container_instance_arn]
+            cluster=cluster, containerInstances=[container_instance_arn]
         )
         instance_id = container_instances["containerInstances"][0]["ec2InstanceId"]
         instance_desc = ec2.describe_instances(InstanceIds=[instance_id])
@@ -101,35 +103,29 @@ def lambda_handler(event, context):
             vpc_id = get_cf_output(stack_name, "VPCId")
             user_target_group_response = elbv2.create_target_group(
                 Name=user_target_group_name,
-                Protocol='HTTP',
+                Protocol="HTTP",
                 Port=main_host_port,
                 VpcId=vpc_id,
-                TargetType='instance',
-                HealthCheckProtocol='HTTP',
+                TargetType="instance",
+                HealthCheckProtocol="HTTP",
                 HealthCheckPort=str(main_host_port),
-                HealthCheckPath='/',
+                HealthCheckPath="/",
                 HealthCheckIntervalSeconds=20,
                 HealthCheckTimeoutSeconds=10,
                 HealthyThresholdCount=2,
                 UnhealthyThresholdCount=10,
                 Tags=[
-                    {'Key': 'session-id', 'Value': session_id},
-                    {'Key': 'user', 'Value': user},
-                    {'Key': 'stack', 'Value': stack_name}
-                ]
+                    {"Key": "session-id", "Value": session_id},
+                    {"Key": "user", "Value": user},
+                    {"Key": "stack", "Value": stack_name},
+                ],
             )
-            user_target_group_arn = user_target_group_response['TargetGroups'][0]['TargetGroupArn']
+            user_target_group_arn = user_target_group_response["TargetGroups"][0]["TargetGroupArn"]
 
             # Register the EC2 instance with the user-specific target group
             print(f"Registering instance {instance_id} with user target group {user_target_group_arn}")
             elbv2.register_targets(
-                TargetGroupArn=user_target_group_arn,
-                Targets=[
-                    {
-                        'Id': instance_id,
-                        'Port': main_host_port
-                    }
-                ]
+                TargetGroupArn=user_target_group_arn, Targets=[{"Id": instance_id, "Port": main_host_port}]
             )
 
             # Check if ALB listener rule already exists for this session
@@ -137,10 +133,10 @@ def lambda_handler(event, context):
             listener_rules = elbv2.describe_rules(ListenerArn=alb_listener_arn)
 
             rule_exists = False
-            for rule in listener_rules['Rules']:
-                for condition in rule.get('Conditions', []):
-                    if condition.get('Field') == 'host-header':
-                        for value in condition.get('Values', []):
+            for rule in listener_rules["Rules"]:
+                for condition in rule.get("Conditions", []):
+                    if condition.get("Field") == "host-header":
+                        for value in condition.get("Values", []):
                             if value == subdomain:
                                 print(f"ALB rule already exists for {subdomain}, skipping creation")
                                 rule_exists = True
@@ -154,24 +150,14 @@ def lambda_handler(event, context):
 
                 elbv2.create_rule(
                     ListenerArn=alb_listener_arn,
-                    Conditions=[
-                        {
-                            'Field': 'host-header',
-                            'Values': [subdomain]
-                        }
-                    ],
+                    Conditions=[{"Field": "host-header", "Values": [subdomain]}],
                     Priority=priority,
-                    Actions=[
-                        {
-                            'Type': 'forward',
-                            'TargetGroupArn': user_target_group_arn
-                        }
-                    ],
+                    Actions=[{"Type": "forward", "TargetGroupArn": user_target_group_arn}],
                     Tags=[
-                        {'Key': 'session-id', 'Value': session_id},
-                        {'Key': 'user', 'Value': user},
-                        {'Key': 'stack', 'Value': stack_name}
-                    ]
+                        {"Key": "session-id", "Value": session_id},
+                        {"Key": "user", "Value": user},
+                        {"Key": "stack", "Value": stack_name},
+                    ],
                 )
 
             print(f"Successfully created session-based routing for user {user}")
@@ -197,10 +183,7 @@ def lambda_handler(event, context):
 
 def send_response(url, message):
     try:
-        response = requests.post(url, json={
-            "response_type": "ephemeral",
-            "text": message
-        })
+        response = requests.post(url, json={"response_type": "ephemeral", "text": message})
         print(f"Slack response status: {response.status_code}")
     except Exception as e:
         print("Failed to post to Slack:", e)
@@ -217,10 +200,7 @@ def send_custom_response(url, blocks_json, tutorial_url):
         blocks_str = blocks_str.replace("{{TUTORIAL_URL}}", tutorial_url)
         blocks = json.loads(blocks_str)
 
-        response = requests.post(url, json={
-            "response_type": "ephemeral",
-            "blocks": blocks
-        })
+        response = requests.post(url, json={"response_type": "ephemeral", "blocks": blocks})
         print(f"Slack response status: {response.status_code}")
     except Exception as e:
         print("Failed to post custom response to Slack:", e)

@@ -10,23 +10,26 @@ ecs = boto3.client("ecs")
 events = boto3.client("events")
 secretsmanager = boto3.client("secretsmanager")
 
+
 def get_secret_password(secret_name, password_key):
     """Get password from AWS Secrets Manager, return None if not found"""
     try:
         response = secretsmanager.get_secret_value(SecretId=secret_name)
-        secret = json.loads(response['SecretString'])
+        secret = json.loads(response["SecretString"])
         return secret.get(password_key)
     except ClientError as e:
-        if e.response['Error']['Code'] == 'ResourceNotFoundException':
+        if e.response["Error"]["Code"] == "ResourceNotFoundException":
             return None
         else:
             raise e
+
 
 def get_cf_output(outputs, key):
     for output in outputs:
         if output["OutputKey"] == key:
             return output["OutputValue"]
     raise Exception(f"Output key {key} not found")
+
 
 def lambda_handler(event, context):
     raw_body = event.get("body", "")
@@ -41,7 +44,7 @@ def lambda_handler(event, context):
         return {
             "statusCode": 400,
             "headers": {"Content-Type": "application/json"},
-            "body": json.dumps({"error": "Stack name is required"})
+            "body": json.dumps({"error": "Stack name is required"}),
         }
 
     params = urllib.parse.parse_qs(raw_body)
@@ -65,10 +68,7 @@ def lambda_handler(event, context):
                 return {
                     "statusCode": 200,
                     "headers": {"Content-Type": "application/json"},
-                    "body": json.dumps({
-                        "response_type": "ephemeral",
-                        "text": "Permission denied."
-                    })
+                    "body": json.dumps({"response_type": "ephemeral", "text": "Permission denied."}),
                 }
 
         cluster = get_cf_output(outputs, "ClusterName")
@@ -76,19 +76,23 @@ def lambda_handler(event, context):
         capacity_provider = get_cf_output(outputs, "CapacityProviderName")
 
         # Check if user already has a running task
-        running_tasks = ecs.list_tasks(cluster=cluster, desiredStatus='RUNNING')
+        running_tasks = ecs.list_tasks(cluster=cluster, desiredStatus="RUNNING")
 
-        for task_arn in running_tasks['taskArns']:
+        for task_arn in running_tasks["taskArns"]:
             tags = ecs.list_tags_for_resource(resourceArn=task_arn)
-            user_tags = [tag['value'] for tag in tags['tags'] if tag['key'] == 'slack-user']
+            user_tags = [tag["value"] for tag in tags["tags"] if tag["key"] == "slack-user"]
             if user in user_tags:
                 return {
                     "statusCode": 200,
                     "headers": {"Content-Type": "application/json"},
-                    "body": json.dumps({
-                        "response_type": "ephemeral",
-                        "text": f"You already have a running task for `{stack_name}`. Only one task per user is allowed."
-                    })
+                    "body": json.dumps(
+                        {
+                            "response_type": "ephemeral",
+                            "text": (
+                                f"You already have a running task for `{stack_name}`. Only one task per user is allowed."
+                            ),
+                        }
+                    ),
                 }
 
         # Launch ECS task using capacity provider
@@ -96,17 +100,12 @@ def lambda_handler(event, context):
             cluster=cluster,
             taskDefinition=task_def,
             count=1,
-            capacityProviderStrategy=[
-                {
-                    'capacityProvider': capacity_provider,
-                    'weight': 1
-                }
-            ],
+            capacityProviderStrategy=[{"capacityProvider": capacity_provider, "weight": 1}],
             tags=[
                 {"key": "task-id", "value": f"task-{int(time.time())}"},
                 {"key": "slack-user", "value": user},
-                {"key": "launch-type", "value": "slack"}
-            ]
+                {"key": "launch-type", "value": "slack"},
+            ],
         )
 
         task_arn = run_response["tasks"][0]["taskArn"]
@@ -116,37 +115,40 @@ def lambda_handler(event, context):
 
         # Emit event for async follow-up
         events.put_events(
-            Entries=[{
-                "Source": "custom.slackbot",
-                "DetailType": "TaskStarted",
-                "Detail": json.dumps({
-                    "task_arn": task_arn,
-                    "cluster": cluster,
-                    "stack": stack_name,
-                    "response_url": response_url,
-                    "user": user,
-                    "port": tutorial_port,
-                    "query_string": tutorial_query_string,
-                    "custom_response_blocks": custom_response_blocks
-                })
-            }]
+            Entries=[
+                {
+                    "Source": "custom.slackbot",
+                    "DetailType": "TaskStarted",
+                    "Detail": json.dumps(
+                        {
+                            "task_arn": task_arn,
+                            "cluster": cluster,
+                            "stack": stack_name,
+                            "response_url": response_url,
+                            "user": user,
+                            "port": tutorial_port,
+                            "query_string": tutorial_query_string,
+                            "custom_response_blocks": custom_response_blocks,
+                        }
+                    ),
+                }
+            ]
         )
 
         return {
             "statusCode": 200,
             "headers": {"Content-Type": "application/json"},
-            "body": json.dumps({
-                "response_type": "ephemeral",
-                "text": "Launching an AWS instance for you, you'll get a message when it's ready."
-            })
+            "body": json.dumps(
+                {
+                    "response_type": "ephemeral",
+                    "text": "Launching an AWS instance for you, you'll get a message when it's ready.",
+                }
+            ),
         }
 
     except Exception as e:
         return {
             "statusCode": 200,
             "headers": {"Content-Type": "application/json"},
-            "body": json.dumps({
-                "response_type": "ephemeral",
-                "text": f"Failed to launch task: {e}"
-            })
+            "body": json.dumps({"response_type": "ephemeral", "text": f"Failed to launch task: {e}"}),
         }
