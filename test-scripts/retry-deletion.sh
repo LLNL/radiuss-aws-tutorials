@@ -39,7 +39,6 @@ for STACK in $FAILED_STACKS; do
   aws cloudformation wait stack-delete-complete \
     --stack-name "$STACK" \
     --region $REGION \
-    --max-attempts 60 \
     && echo "Stack $STACK deleted successfully" \
     || echo "Stack $STACK deletion still failed (manual cleanup needed)"
 done
