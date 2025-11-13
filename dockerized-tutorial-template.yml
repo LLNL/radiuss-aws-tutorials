@@ -500,7 +500,7 @@ Resources:
   SlackBotLambdaRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub "${AWS::StackName}-SlackBotLambdaExecutionRole"
+      RoleName: !Sub "${AWS::StackName}-SlackBot"
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -623,7 +623,7 @@ Resources:
   CleanupLambdaRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub "${AWS::StackName}-CleanupLambdaRole"
+      RoleName: !Sub "${AWS::StackName}-Cleanup"
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
