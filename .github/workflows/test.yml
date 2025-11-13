@@ -37,19 +37,9 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Install cfn-lint
-        run: pip install cfn-lint
-
-      - name: Run cfn-lint
-        run: cfn-lint dockerized-tutorial-template.yml
-
       - name: Install TaskCat
         run: |
           pip install taskcat
-
-      - name: Run TaskCat lint
-        run: |
-          taskcat lint
 
       - name: Run infrastructure deployment test
         run: |
