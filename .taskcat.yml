@@ -21,7 +21,3 @@ tests:
       PasswordSecretsName: ""
       PasswordSecretsKey: ""
       CustomResponseBlocks: ""
-    posthooks:
-    - type: script
-      config:
-        command: ./test-scripts/retry-deletion.sh

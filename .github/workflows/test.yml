@@ -49,7 +49,7 @@ jobs:
 
       - name: Run infrastructure deployment test
         run: |
-          taskcat test run --test-names minimal-nginx
+          taskcat test run --test-names minimal-nginx --no-delete
 
       - name: Upload TaskCat results
         if: always()
@@ -57,3 +57,7 @@ jobs:
         with:
           name: taskcat-results
           path: taskcat_outputs/
+
+      - name: Clean up stack
+        if: always()
+        run: ./test-scripts/retry-deletion.sh
