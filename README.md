@@ -161,7 +161,7 @@ aws cloudformation delete-stack --stack-name ${TUTORIAL_NAME}-tutorial
 See `ami/README.md` for instructions.
 
 # Slackbot integration
-Go to the [Slack API](https://api.slack.com/). Choose "Your apps" and create or choose existing app, then go to slash commands. You just need to make a command name, description, and set the request URL to:
+Go to the [Slack API Apps](https://api.slack.com/apps). Create or choose existing app, then go to slash commands. You just need to make a command name, description, and set the request URL to:
 
 ``` bash
 aws cloudformation describe-stacks \
