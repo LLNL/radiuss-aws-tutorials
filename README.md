@@ -19,6 +19,7 @@ Parameters are configured in JSON files in the `parameters/` directory:
 - `parameters/raja.json` - Raja tutorial configuration
 - `parameters/mfem.json` - MFEM tutorial configuration
 - `parameters/axom.json` - Axom tutorial configuration
+- `parameters/ygm.json` - YGM tutorial configuration
 
 Choose the tutorial you want to deploy:
 ``` bash

@@ -12,7 +12,16 @@ SG_ID=$(aws ec2 describe-security-groups \
   --query 'SecurityGroups[0].GroupId' --output text)
 ```
 
-To start from a GPU-optimized AMI with ECS and Docker installed:
+To start from a standard ECS-optimized AMI with Docker installed (for CPU-only instances):
+``` bash
+BASE_AMI=$(aws ssm get-parameters \
+  --names /aws/service/ecs/optimized-ami/amazon-linux-2023/recommended/image_id \
+  --region us-east-1 \
+  --query "Parameters[0].Value" \
+  --output text)
+```
+
+To start from a GPU-optimized AMI with ECS and Docker installed (for GPU instances):
 ``` bash
 BASE_AMI=$(aws ssm get-parameters \
   --names /aws/service/ecs/optimized-ami/amazon-linux-2023/gpu/recommended/image_id \
@@ -23,7 +32,7 @@ BASE_AMI=$(aws ssm get-parameters \
 
 Example usage of AMI builder:
 ```bash
-./build-ami.sh $BASE_AMI "raja-tutorial" $SUBNET_ID $SG_ID <my-key-pair> ghcr.io/llnl/raja-suite-tutorial/tutorial:latest raja-suite-tutorial:local g4dn.8xlarge
+./build-ami.sh $BASE_AMI "raja-tutorial" $SUBNET_ID $SG_ID <my-key-pair> ghcr.io/llnl/raja-suite-tutorial/tutorial:latest raja-suite-tutorial:local t3.large
 ```
 
 The AMI ID is automatically stored in Parameter Store as `/hpcic-tutorials/amis/<ami-name>`.
