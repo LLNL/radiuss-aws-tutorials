@@ -1,0 +1,50 @@
+[
+  {
+    "ParameterKey": "TutorialAMI",
+    "ParameterValue": "${AMI_ID}"
+  },
+  {
+    "ParameterKey": "TutorialImage",
+    "ParameterValue": "ygm-tutorial:local"
+  },
+  {
+    "ParameterKey": "TutorialPort",
+    "ParameterValue": "3000"
+  },
+  {
+    "ParameterKey": "TutorialName",
+    "ParameterValue": "ygm"
+  },
+  {
+    "ParameterKey": "TutorialQueryString",
+    "ParameterValue": "?folder=/home/tutorial/ygm-tutorial"
+  },
+  {
+    "ParameterKey": "TaskTimeoutHours",
+    "ParameterValue": "1"
+  },
+  {
+    "ParameterKey": "InstanceType",
+    "ParameterValue": "c6i.4xlarge"
+  },
+  {
+    "ParameterKey": "RequiresGPU",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "DesiredCapacity",
+    "ParameterValue": "0"
+  },
+  {
+    "ParameterKey": "PasswordSecretsName",
+    "ParameterValue": "ygm-tutorial-secret"
+  },
+  {
+    "ParameterKey": "PasswordSecretsKey",
+    "ParameterValue": "ygm-tutorial-slack-password"
+  },
+  {
+    "ParameterKey": "CustomResponseBlocks",
+    "ParameterValue": ""
+  }
+]
