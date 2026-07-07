@@ -19,6 +19,7 @@ Parameters are configured in JSON files in the `parameters/` directory:
 - `parameters/raja.json` - Raja tutorial configuration
 - `parameters/mfem.json` - MFEM tutorial configuration
 - `parameters/axom.json` - Axom tutorial configuration
+- `parameters/ygm.json` - YGM tutorial configuration
 
 Choose the tutorial you want to deploy:
 ``` bash
@@ -161,7 +162,7 @@ aws cloudformation delete-stack --stack-name ${TUTORIAL_NAME}-tutorial
 See `ami/README.md` for instructions.
 
 # Slackbot integration
-Go to the [Slack API](https://api.slack.com/). Choose "Your apps" and create or choose existing app, then go to slash commands. You just need to make a command name, description, and set the request URL to:
+Go to the [Slack API Apps](https://api.slack.com/apps). Create or choose existing app, then go to slash commands. You just need to make a command name, description, and set the request URL to:
 
 ``` bash
 aws cloudformation describe-stacks \

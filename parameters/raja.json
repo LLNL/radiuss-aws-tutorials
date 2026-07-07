@@ -28,6 +28,10 @@
     "ParameterValue": "g4dn.xlarge"
   },
   {
+    "ParameterKey": "RequiresGPU",
+    "ParameterValue": "true"
+  },
+  {
     "ParameterKey": "DesiredCapacity",
     "ParameterValue": "0"
   },

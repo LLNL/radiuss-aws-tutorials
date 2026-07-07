@@ -29,6 +29,13 @@ Parameters:
     Type: String
     Description: EC2 instance type for ECS cluster
     Default: g4dn.xlarge
+  RequiresGPU:
+    Type: String
+    Description: Whether this tutorial requires GPU (true/false)
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
   KeyPairName:
     Type: String
     Description: EC2 Key Pair for SSH access (leave empty to disable SSH)
@@ -68,6 +75,7 @@ Conditions:
   HasAdditionalPorts: !Not [!Equals [!Select [0, !Ref AdditionalPorts], "NONE"]]
   HasSecondPort: !And [!Condition HasAdditionalPorts, !Not [!Equals [!Select [0, !Ref AdditionalPorts], ""]]]
   HasThirdPort: !And [!Condition HasAdditionalPorts, !Not [!Equals [!Join [",", !Ref AdditionalPorts], !Select [0, !Ref AdditionalPorts]]]]
+  NeedsGPU: !Equals [!Ref RequiresGPU, "true"]
 
 Resources:
   VPC:
@@ -166,9 +174,11 @@ Resources:
         - Name: !Sub "${TutorialName}-container"
           Image: !Ref TutorialImage
           MemoryReservation: 4096
-          ResourceRequirements:
-            - Type: GPU
-              Value: "1"
+          ResourceRequirements: !If
+            - NeedsGPU
+            - - Type: GPU
+                Value: "1"
+            - !Ref "AWS::NoValue"
           PortMappings:
             - ContainerPort: !Ref TutorialPort
               HostPort: 0
@@ -385,17 +395,20 @@ Resources:
         SecurityGroupIds:
           - !Ref SecurityGroup
         UserData:
-          Fn::Base64: !Sub |
-            #!/bin/bash
+          Fn::Base64: !Sub
+            - |
+              #!/bin/bash
 
-            # Configure ECS agent
-            mkdir -p /etc/ecs
-            sudo tee /etc/ecs/ecs.config << EOF
-            ECS_CLUSTER=${Cluster}
-            ECS_ENABLE_GPU_SUPPORT=true
-            EOF
+              # Configure ECS agent
+              mkdir -p /etc/ecs
+              sudo tee /etc/ecs/ecs.config << EOF
+              ECS_CLUSTER=${ClusterName}
+              ${GPUConfig}
+              EOF
 
-            sudo systemctl restart ecs --no-block
+              sudo systemctl restart ecs --no-block
+            - ClusterName: !Ref Cluster
+              GPUConfig: !If [NeedsGPU, "ECS_ENABLE_GPU_SUPPORT=true", ""]
 
   AutoScalingGroup:
     Type: AWS::AutoScaling::AutoScalingGroup

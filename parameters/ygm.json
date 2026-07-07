@@ -5,7 +5,7 @@
   },
   {
     "ParameterKey": "TutorialImage",
-    "ParameterValue": "axom-tutorial:local"
+    "ParameterValue": "ygm-tutorial:local"
   },
   {
     "ParameterKey": "TutorialPort",
@@ -13,11 +13,11 @@
   },
   {
     "ParameterKey": "TutorialName",
-    "ParameterValue": "axom"
+    "ParameterValue": "ygm"
   },
   {
     "ParameterKey": "TutorialQueryString",
-    "ParameterValue": "?folder=/home/axomdev/radiuss_tutorial"
+    "ParameterValue": "?folder=/home/tutorial/ygm-tutorial"
   },
   {
     "ParameterKey": "TaskTimeoutHours",
@@ -25,11 +25,11 @@
   },
   {
     "ParameterKey": "InstanceType",
-    "ParameterValue": "g4dn.2xlarge"
+    "ParameterValue": "c6i.4xlarge"
   },
   {
     "ParameterKey": "RequiresGPU",
-    "ParameterValue": "true"
+    "ParameterValue": "false"
   },
   {
     "ParameterKey": "DesiredCapacity",
@@ -37,11 +37,11 @@
   },
   {
     "ParameterKey": "PasswordSecretsName",
-    "ParameterValue": ""
+    "ParameterValue": "ygm-tutorial-secret"
   },
   {
     "ParameterKey": "PasswordSecretsKey",
-    "ParameterValue": ""
+    "ParameterValue": "ygm-tutorial-slack-password"
   },
   {
     "ParameterKey": "CustomResponseBlocks",
