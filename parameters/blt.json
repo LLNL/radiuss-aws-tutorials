@@ -25,7 +25,7 @@
   },
   {
     "ParameterKey": "InstanceType",
-    "ParameterValue": "c6i.xlarge"
+    "ParameterValue": "m6a.large"
   },
   {
     "ParameterKey": "RequiresGPU",
