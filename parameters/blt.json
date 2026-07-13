@@ -1,0 +1,50 @@
+[
+  {
+    "ParameterKey": "TutorialAMI",
+    "ParameterValue": "${AMI_ID}"
+  },
+  {
+    "ParameterKey": "TutorialImage",
+    "ParameterValue": "blt-tutorial:local"
+  },
+  {
+    "ParameterKey": "TutorialPort",
+    "ParameterValue": "3000"
+  },
+  {
+    "ParameterKey": "TutorialName",
+    "ParameterValue": "blt"
+  },
+  {
+    "ParameterKey": "TutorialQueryString",
+    "ParameterValue": "?folder=/home/bltdev/blt"
+  },
+  {
+    "ParameterKey": "TaskTimeoutHours",
+    "ParameterValue": "1"
+  },
+  {
+    "ParameterKey": "InstanceType",
+    "ParameterValue": "c6i.xlarge"
+  },
+  {
+    "ParameterKey": "RequiresGPU",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "DesiredCapacity",
+    "ParameterValue": "0"
+  },
+  {
+    "ParameterKey": "PasswordSecretsName",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "PasswordSecretsKey",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "CustomResponseBlocks",
+    "ParameterValue": ""
+  }
+]
