@@ -17,7 +17,7 @@
   },
   {
     "ParameterKey": "TutorialQueryString",
-    "ParameterValue": "?folder=/home/bltdev/blt"
+    "ParameterValue": "?folder=/home/bltdev"
   },
   {
     "ParameterKey": "TaskTimeoutHours",
