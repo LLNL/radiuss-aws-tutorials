@@ -785,7 +785,7 @@ Outputs:
       wait_for_task_url() {
         local TASK_ID=$1
         local TASK_ARN=$2
-        local MAX_ATTEMPTS=60
+        local MAX_ATTEMPTS=150
 
         echo "Waiting for task $TASK_ID..."
 
