@@ -37,11 +37,11 @@
   },
   {
     "ParameterKey": "PasswordSecretsName",
-    "ParameterValue": ""
+    "ParameterValue": "axom-tutorial-secret"
   },
   {
     "ParameterKey": "PasswordSecretsKey",
-    "ParameterValue": ""
+    "ParameterValue": "axom-tutorial-slack-password"
   },
   {
     "ParameterKey": "CustomResponseBlocks",
