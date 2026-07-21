@@ -32,6 +32,10 @@
     "ParameterValue": "false"
   },
   {
+    "ParameterKey": "TaskMemoryReservation",
+    "ParameterValue": "20000"
+  },
+  {
     "ParameterKey": "DesiredCapacity",
     "ParameterValue": "0"
   },
