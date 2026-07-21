@@ -244,6 +244,9 @@ Resources:
       Name: !Sub "${TutorialName}-alb"
       Type: application
       Scheme: internet-facing
+      LoadBalancerAttributes:
+        - Key: idle_timeout.timeout_seconds
+          Value: "4000"
       SecurityGroups:
         - !Ref ALBSecurityGroup
       Subnets:
