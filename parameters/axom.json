@@ -17,7 +17,7 @@
   },
   {
     "ParameterKey": "TutorialQueryString",
-    "ParameterValue": "?folder=/home/axomdev/radiuss_tutorial"
+    "ParameterValue": "?folder=/home/axomdev/shaping_tutorial"
   },
   {
     "ParameterKey": "TaskTimeoutHours",
