@@ -36,6 +36,10 @@ Parameters:
     AllowedValues:
       - "true"
       - "false"
+  TaskMemoryReservation:
+    Type: Number
+    Description: Memory (MiB) reserved per task for placement. Set to >50% of the instance's memory to force one task per instance.
+    Default: 4096
   KeyPairName:
     Type: String
     Description: EC2 Key Pair for SSH access (leave empty to disable SSH)
@@ -173,7 +177,7 @@ Resources:
       ContainerDefinitions:
         - Name: !Sub "${TutorialName}-container"
           Image: !Ref TutorialImage
-          MemoryReservation: 4096
+          MemoryReservation: !Ref TaskMemoryReservation
           ResourceRequirements: !If
             - NeedsGPU
             - - Type: GPU
@@ -244,6 +248,9 @@ Resources:
       Name: !Sub "${TutorialName}-alb"
       Type: application
       Scheme: internet-facing
+      LoadBalancerAttributes:
+        - Key: idle_timeout.timeout_seconds
+          Value: "4000"
       SecurityGroups:
         - !Ref ALBSecurityGroup
       Subnets:
