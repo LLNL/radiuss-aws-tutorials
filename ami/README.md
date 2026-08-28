@@ -32,7 +32,11 @@ BASE_AMI=$(aws ssm get-parameters \
 
 Example usage of AMI builder:
 ```bash
-./build-ami.sh $BASE_AMI "raja-tutorial" $SUBNET_ID $SG_ID <my-key-pair> ghcr.io/llnl/raja-suite-tutorial/tutorial:latest raja-suite-tutorial:local t3.large
+./build-ami.sh $BASE_AMI "raja-tutorial" $SUBNET_ID $SG_ID tutorial-key-east ghcr.io/llnl/raja-suite-tutorial/tutorial:latest raja-suite-tutorial:local g6.xlarge
+```
+or for Axom (CPU only) I used
+```
+./build-ami.sh $BASE_AMI "axom-tutorial" $SUBNET_ID $SG_ID tutorial-key-east han12/axom-tutorial:7-9-26 axom-tutorial:local t3.large
 ```
 
 The AMI ID is automatically stored in Parameter Store as `/hpcic-tutorials/amis/<ami-name>`.
