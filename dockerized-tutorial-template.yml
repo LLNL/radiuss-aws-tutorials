@@ -293,6 +293,10 @@ Resources:
       HealthCheckTimeoutSeconds: 10
       HealthyThresholdCount: 2
       UnhealthyThresholdCount: 10
+      # Accept redirects so servers that redirect "/" (e.g. JupyterLab "/" -> "/lab")
+      # pass the health check. openvscode-server returns 200, also in range.
+      Matcher:
+        HttpCode: "200-399"
       Tags:
         - Key: Name
           Value: !Sub "${TutorialName}-TargetGroup"
