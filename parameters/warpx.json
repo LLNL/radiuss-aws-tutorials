@@ -1,0 +1,54 @@
+[
+  {
+    "ParameterKey": "TutorialAMI",
+    "ParameterValue": "${AMI_ID}"
+  },
+  {
+    "ParameterKey": "TutorialImage",
+    "ParameterValue": "warpx-tutorial:local"
+  },
+  {
+    "ParameterKey": "TutorialPort",
+    "ParameterValue": "3000"
+  },
+  {
+    "ParameterKey": "TutorialName",
+    "ParameterValue": "warpx"
+  },
+  {
+    "ParameterKey": "TutorialQueryString",
+    "ParameterValue": "/lab"
+  },
+  {
+    "ParameterKey": "TaskTimeoutHours",
+    "ParameterValue": "4"
+  },
+  {
+    "ParameterKey": "InstanceType",
+    "ParameterValue": "m6idn.2xlarge"
+  },
+  {
+    "ParameterKey": "RequiresGPU",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "TaskMemoryReservation",
+    "ParameterValue": "20000"
+  },
+  {
+    "ParameterKey": "DesiredCapacity",
+    "ParameterValue": "0"
+  },
+  {
+    "ParameterKey": "PasswordSecretsName",
+    "ParameterValue": "warpx-tutorial-secret"
+  },
+  {
+    "ParameterKey": "PasswordSecretsKey",
+    "ParameterValue": "warpx-tutorial-slack-password"
+  },
+  {
+    "ParameterKey": "CustomResponseBlocks",
+    "ParameterValue": ""
+  }
+]
