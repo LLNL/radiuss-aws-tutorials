@@ -32,7 +32,7 @@ BASE_AMI=$(aws ssm get-parameters \
 
 Example usage of AMI builder:
 ```bash
-./build-ami.sh $BASE_AMI "raja-tutorial" $SUBNET_ID $SG_ID tutorial-key-east ghcr.io/llnl/raja-suite-tutorial/tutorial:latest raja-suite-tutorial:local g6.xlarge
+./build-ami.sh $BASE_AMI "raja-tutorial" $SUBNET_ID $SG_ID tutorial-key-east ghcr.io/llnl/raja-suite-tutorial/tutorial:latest raja-suite-tutorial:local t3.large
 ```
 or for Axom (CPU only) I used
 ```
