@@ -17,15 +17,15 @@
   },
   {
     "ParameterKey": "TutorialQueryString",
-    "ParameterValue": "/lab"
+    "ParameterValue": "lab"
   },
   {
     "ParameterKey": "TaskTimeoutHours",
-    "ParameterValue": "4"
+    "ParameterValue": "1"
   },
   {
     "ParameterKey": "InstanceType",
-    "ParameterValue": "m6idn.2xlarge"
+    "ParameterValue": "m6idn.xlarge"
   },
   {
     "ParameterKey": "RequiresGPU",
@@ -33,7 +33,7 @@
   },
   {
     "ParameterKey": "TaskMemoryReservation",
-    "ParameterValue": "20000"
+    "ParameterValue": "14000"
   },
   {
     "ParameterKey": "DesiredCapacity",
