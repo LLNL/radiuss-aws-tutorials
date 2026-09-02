@@ -17,7 +17,7 @@
   },
   {
     "ParameterKey": "TutorialQueryString",
-    "ParameterValue": "lab"
+    "ParameterValue": "/lab"
   },
   {
     "ParameterKey": "TaskTimeoutHours",

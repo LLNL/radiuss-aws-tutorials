@@ -25,6 +25,35 @@ def generate_session_id(public_ip):
     return public_ip.replace(".", "-")
 
 
+def tutorial_url_suffix(query_string):
+    if not query_string:
+        return ""
+    if query_string.startswith("?"):
+        return query_string
+    return f"/{query_string.lstrip('/')}"
+
+
+def wait_for_target_health(target_group_arn, instance_id, port, context):
+    for attempt in range(60):
+        target_health = elbv2.describe_target_health(
+            TargetGroupArn=target_group_arn,
+            Targets=[{"Id": instance_id, "Port": port}],
+        )
+        target = target_health["TargetHealthDescriptions"][0]
+        state = target["TargetHealth"]["State"]
+        print(f"[Target health attempt {attempt}] State: {state}")
+
+        if state == "healthy":
+            return True
+
+        if context.get_remaining_time_in_millis() < 20000:
+            return False
+
+        time.sleep(5)
+
+    return False
+
+
 def lambda_handler(event, context):
     print("Received event:", json.dumps(event, indent=2))
 
@@ -82,7 +111,7 @@ def lambda_handler(event, context):
 
         print(f"Main tutorial port {tutorial_port} maps to host port {main_host_port}")
 
-        query_string = detail.get("query_string", "")
+        url_suffix = tutorial_url_suffix(detail.get("query_string", ""))
         custom_response_blocks = detail.get("custom_response_blocks", "")
         stack_name = detail.get("stack")
         user = detail.get("user", "unknown")
@@ -164,13 +193,19 @@ def lambda_handler(event, context):
 
             print(f"Successfully created session-based routing for user {user}")
 
-            # Generate HTTPS URL with session subdomain
-            tutorial_url = f"https://{session_id}.{tutorial_name}.{domain_name}/{query_string}"
+            tutorial_url = f"https://{session_id}.{tutorial_name}.{domain_name}{url_suffix}"
+
+            if not wait_for_target_health(user_target_group_arn, instance_id, main_host_port, context):
+                send_response(
+                    response_url,
+                    f"Your container started but the load balancer is still warming up. Try this URL in a minute: `{tutorial_url}`",
+                )
+                return
 
         except Exception as e:
             print(f"Error with ALB session setup: {e}")
             # Fallback to direct HTTP URL if ALB fails
-            tutorial_url = f"http://{public_ip}:{main_host_port}{query_string}"
+            tutorial_url = f"http://{public_ip}:{main_host_port}{url_suffix}"
 
         # Send custom response if provided, otherwise default
         if custom_response_blocks:
