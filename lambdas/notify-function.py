@@ -59,6 +59,7 @@ def lambda_handler(event, context):
         instance_id = container_instances["containerInstances"][0]["ec2InstanceId"]
         instance_desc = ec2.describe_instances(InstanceIds=[instance_id])
         public_ip = instance_desc["Reservations"][0]["Instances"][0]["PublicIpAddress"]
+        subdomain = generate_session_id(public_ip)
 
         # Extract port mappings from the running task
         container = task["containers"][0]
@@ -94,7 +95,7 @@ def lambda_handler(event, context):
             alb_listener_arn = get_cf_output(stack_name, "ALBHTTPSListenerArn")
 
             # Generate unique session ID using public IP
-            session_id = generate_session_id(public_ip)
+            session_id = subdomain
             print(f"Generated session ID: {session_id} (from IP: {public_ip})")
 
             # Create a dedicated target group for this user session
@@ -173,7 +174,13 @@ def lambda_handler(event, context):
 
         # Send custom response if provided, otherwise default
         if custom_response_blocks:
-            send_custom_response(response_url, custom_response_blocks, tutorial_url)
+            send_custom_response(
+                response_url,
+                custom_response_blocks,
+                tutorial_url,
+                subdomain,
+                query_string,
+            )
         else:
             send_response(response_url, f"Your container is ready at `{tutorial_url}`")
 
@@ -190,7 +197,7 @@ def send_response(url, message):
         print("Failed to post to Slack:", e)
 
 
-def send_custom_response(url, blocks_json, tutorial_url):
+def send_custom_response(url, blocks_json, tutorial_url, subdomain, query_string):
     """Send a custom blocks response to Slack with variable substitution"""
     try:
         # Parse the blocks JSON and substitute variables
@@ -199,6 +206,8 @@ def send_custom_response(url, blocks_json, tutorial_url):
         # Replace placeholders in the blocks
         blocks_str = json.dumps(blocks)
         blocks_str = blocks_str.replace("{{TUTORIAL_URL}}", tutorial_url)
+        blocks_str = blocks_str.replace("{{SUBDOMAIN}}", subdomain)
+        blocks_str = blocks_str.replace("{{QUERY_STRING}}", query_string)
         blocks = json.loads(blocks_str)
 
         response = requests.post(url, json={"response_type": "ephemeral", "blocks": blocks})
