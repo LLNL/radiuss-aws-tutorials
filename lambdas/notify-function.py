@@ -198,7 +198,8 @@ def lambda_handler(event, context):
             if not wait_for_target_health(user_target_group_arn, instance_id, main_host_port, context):
                 send_response(
                     response_url,
-                    f"Your container started but the load balancer is still warming up. Try this URL in a minute: `{tutorial_url}`",
+                    "Your container started but the load balancer is still warming up. "
+                    f"Try this URL in a minute: `{tutorial_url}`",
                 )
                 return
 
