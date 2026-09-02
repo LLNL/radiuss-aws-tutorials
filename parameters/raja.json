@@ -25,7 +25,7 @@
   },
   {
     "ParameterKey": "InstanceType",
-    "ParameterValue": "g6.xlarge"
+    "ParameterValue": "g4dn.xlarge"
   },
   {
     "ParameterKey": "RequiresGPU",

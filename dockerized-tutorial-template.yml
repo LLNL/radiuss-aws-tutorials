@@ -148,6 +148,57 @@ Resources:
       SubnetId: !Ref SecondaryPublicSubnet
       RouteTableId: !Ref PublicRouteTable
 
+  TertiaryPublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.3.0/24
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select [2, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub "${TutorialName}-TertiaryPublicSubnet"
+
+  TertiarySubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref TertiaryPublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+  QuaternaryPublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.4.0/24
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select [3, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub "${TutorialName}-QuaternaryPublicSubnet"
+
+  QuaternarySubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref QuaternaryPublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+  QuinaryPublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.5.0/24
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select [4, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub "${TutorialName}-QuinaryPublicSubnet"
+
+  QuinarySubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref QuinaryPublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
   Cluster:
     Type: AWS::ECS::Cluster
     Properties:
@@ -256,6 +307,9 @@ Resources:
       Subnets:
         - !Ref PublicSubnet
         - !Ref SecondaryPublicSubnet
+        - !Ref TertiaryPublicSubnet
+        - !Ref QuaternaryPublicSubnet
+        - !Ref QuinaryPublicSubnet
       Tags:
         - Key: Name
           Value: !Sub "${TutorialName}-ALB"
@@ -430,6 +484,10 @@ Resources:
       NewInstancesProtectedFromScaleIn: true
       VPCZoneIdentifier:
         - !Ref PublicSubnet
+        - !Ref SecondaryPublicSubnet
+        - !Ref TertiaryPublicSubnet
+        - !Ref QuaternaryPublicSubnet
+        - !Ref QuinaryPublicSubnet
       Tags:
         - Key: Name
           Value: !Sub "${TutorialName}-ecs-instance"
