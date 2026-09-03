@@ -131,7 +131,7 @@ def lambda_handler(event, context):
             )
 
             # Check if ALB listener rule already exists for this session
-            subdomain = f"{session_id}.{tutorial_name}.{domain_name}"
+            session_hostname = f"{session_id}.{tutorial_name}.{domain_name}"
             listener_rules = elbv2.describe_rules(ListenerArn=alb_listener_arn)
 
             rule_exists = False
@@ -139,20 +139,20 @@ def lambda_handler(event, context):
                 for condition in rule.get("Conditions", []):
                     if condition.get("Field") == "host-header":
                         for value in condition.get("Values", []):
-                            if value == subdomain:
-                                print(f"ALB rule already exists for {subdomain}, skipping creation")
+                            if value == session_hostname:
+                                print(f"ALB rule already exists for {session_hostname}, skipping creation")
                                 rule_exists = True
                                 break
                 if rule_exists:
                     break
 
             if not rule_exists:
-                print(f"Creating ALB listener rule for host: {subdomain}")
+                print(f"Creating ALB listener rule for host: {session_hostname}")
                 priority = hash(session_id) % 49000 + 1000
 
                 elbv2.create_rule(
                     ListenerArn=alb_listener_arn,
-                    Conditions=[{"Field": "host-header", "Values": [subdomain]}],
+                    Conditions=[{"Field": "host-header", "Values": [session_hostname]}],
                     Priority=priority,
                     Actions=[{"Type": "forward", "TargetGroupArn": user_target_group_arn}],
                     Tags=[
