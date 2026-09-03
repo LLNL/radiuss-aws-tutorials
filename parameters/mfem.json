@@ -5,7 +5,7 @@
   },
   {
     "ParameterKey": "TutorialImage",
-    "ParameterValue": "mfem-developer-cpu:local"
+    "ParameterValue": "mfem-tutorial:local"
   },
   {
     "ParameterKey": "TutorialPort",
