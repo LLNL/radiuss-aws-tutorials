@@ -12,13 +12,15 @@ elbv2 = boto3.client("elbv2")
 cf = boto3.client("cloudformation")
 
 
-def get_cf_output(stack_name, key):
+def get_cf_output(stack_name, key, default=None):
     """Get CloudFormation output value by key"""
     stack = cf.describe_stacks(StackName=stack_name)["Stacks"][0]
     outputs = stack["Outputs"]
     for output in outputs:
         if output["OutputKey"] == key:
             return output["OutputValue"]
+    if default is not None:
+        return default
     raise Exception(f"Output key {key} not found in stack {stack_name}")
 
 
@@ -35,6 +37,19 @@ def get_listener_rule_for_host(listener_arn, hostname):
                 if condition.get("Field") == "host-header" and hostname in condition.get("Values", []):
                     return rule
     return None
+
+
+def get_listener_rule_count(listener_arn):
+    paginator = elbv2.get_paginator("describe_rules")
+    return sum(len(page["Rules"]) for page in paginator.paginate(ListenerArn=listener_arn))
+
+
+def select_session_listener(listeners, session_id):
+    listener_counts = [(listener, get_listener_rule_count(listener["arn"])) for listener in listeners]
+    minimum_count = min(count for _, count in listener_counts)
+    least_used_listeners = [listener for listener, count in listener_counts if count == minimum_count]
+    digest = hashlib.sha256(session_id.encode("utf-8")).digest()
+    return least_used_listeners[int.from_bytes(digest[:4], byteorder="big") % len(least_used_listeners)]
 
 
 def create_listener_rule(listener_arn, hostname, target_group_arn, tags):
@@ -126,9 +141,15 @@ def lambda_handler(event, context):
             domain_name = get_cf_output(stack_name, "DomainName")
             tutorial_name = get_cf_output(stack_name, "TutorialName")
             alb_listener_arn = get_cf_output(stack_name, "ALBHTTPSListenerArn")
+            secondary_alb_listener_arn = get_cf_output(stack_name, "SecondaryALBHTTPSListenerArn", "")
+
+            session_id = subdomain
+            listeners = [{"arn": alb_listener_arn, "subdomain": tutorial_name}]
+            if secondary_alb_listener_arn:
+                listeners.append({"arn": secondary_alb_listener_arn, "subdomain": f"{tutorial_name}-2"})
+            session_listener = select_session_listener(listeners, session_id)
 
             # Generate unique session ID using public IP
-            session_id = subdomain
             print(f"Generated session ID: {session_id} (from IP: {public_ip})")
 
             # Create a dedicated target group for this user session
@@ -164,15 +185,15 @@ def lambda_handler(event, context):
             )
 
             # Check if ALB listener rule already exists for this session
-            session_hostname = f"{session_id}.{tutorial_name}.{domain_name}"
-            existing_rule = get_listener_rule_for_host(alb_listener_arn, session_hostname)
+            session_hostname = f"{session_id}.{session_listener['subdomain']}.{domain_name}"
+            existing_rule = get_listener_rule_for_host(session_listener["arn"], session_hostname)
 
             if existing_rule:
                 print(f"ALB rule already exists for {session_hostname}, skipping creation")
             else:
                 print(f"Creating ALB listener rule for host: {session_hostname}")
                 create_listener_rule(
-                    alb_listener_arn,
+                    session_listener["arn"],
                     session_hostname,
                     user_target_group_arn,
                     [
@@ -182,10 +203,15 @@ def lambda_handler(event, context):
                     ],
                 )
 
+            ecs.tag_resource(
+                resourceArn=task_arn,
+                tags=[{"key": "session-hostname", "value": session_hostname}],
+            )
+
             print(f"Successfully created session-based routing for user {user}")
 
             # Generate HTTPS URL with session subdomain
-            tutorial_url = f"https://{session_id}.{tutorial_name}.{domain_name}/{query_string}"
+            tutorial_url = f"https://{session_hostname}/{query_string}"
 
         except Exception as e:
             print(f"Error with ALB session setup: {e}")
@@ -198,11 +224,14 @@ def lambda_handler(event, context):
                 response_url,
                 custom_response_blocks,
                 tutorial_url,
+                tutorial_url.split("?", 1)[0].rstrip("/"),
                 subdomain,
                 query_string,
             )
         else:
             send_response(response_url, f"Your container is ready at `{tutorial_url}`")
+
+        return {"tutorial_url": tutorial_url}
 
     except Exception as e:
         print("Error:", e)
@@ -217,7 +246,7 @@ def send_response(url, message):
         print("Failed to post to Slack:", e)
 
 
-def send_custom_response(url, blocks_json, tutorial_url, subdomain, query_string):
+def send_custom_response(url, blocks_json, tutorial_url, tutorial_base_url, subdomain, query_string):
     """Send a custom blocks response to Slack with variable substitution"""
     try:
         # Parse the blocks JSON and substitute variables
@@ -226,6 +255,7 @@ def send_custom_response(url, blocks_json, tutorial_url, subdomain, query_string
         # Replace placeholders in the blocks
         blocks_str = json.dumps(blocks)
         blocks_str = blocks_str.replace("{{TUTORIAL_URL}}", tutorial_url)
+        blocks_str = blocks_str.replace("{{TUTORIAL_BASE_URL}}", tutorial_base_url)
         blocks_str = blocks_str.replace("{{SUBDOMAIN}}", subdomain)
         blocks_str = blocks_str.replace("{{QUERY_STRING}}", query_string)
         blocks = json.loads(blocks_str)

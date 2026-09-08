@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 import boto3
 
 
-def get_cf_output(stack_name, key):
+def get_cf_output(stack_name, key, default=None):
     """Get CloudFormation output value by key"""
     cf = boto3.client("cloudformation")
     stack = cf.describe_stacks(StackName=stack_name)["Stacks"][0]
@@ -12,7 +12,22 @@ def get_cf_output(stack_name, key):
     for output in outputs:
         if output["OutputKey"] == key:
             return output["OutputValue"]
+    if default is not None:
+        return default
     raise Exception(f"Output key {key} not found in stack {stack_name}")
+
+
+def delete_session_listener_rules(elbv2, listener_arn, session_id):
+    paginator = elbv2.get_paginator("describe_rules")
+    for page in paginator.paginate(ListenerArn=listener_arn):
+        for rule in page["Rules"]:
+            for condition in rule.get("Conditions", []):
+                if condition.get("Field") == "host-header" and any(
+                    value.startswith(f"{session_id}.") for value in condition.get("Values", [])
+                ):
+                    print(f"Deleting ALB listener rule for session {session_id}")
+                    elbv2.delete_rule(RuleArn=rule["RuleArn"])
+                    break
 
 
 def lambda_handler(event, context):
@@ -82,18 +97,14 @@ def lambda_handler(event, context):
                                     print(f"Cleaning up session resources for: {session_id}")
 
                                     # Find and delete ALB listener rules for this session
-                                    alb_listener_arn = get_cf_output(stack_name, "ALBHTTPSListenerArn")
-                                    listener_rules = elbv2.describe_rules(ListenerArn=alb_listener_arn)
-
-                                    for rule in listener_rules["Rules"]:
-                                        # Check if this rule is for our session
-                                        for condition in rule.get("Conditions", []):
-                                            if condition.get("Field") == "host-header":
-                                                for value in condition.get("Values", []):
-                                                    if value.startswith(f"{session_id}."):
-                                                        print(f"Deleting ALB listener rule for session {session_id}")
-                                                        elbv2.delete_rule(RuleArn=rule["RuleArn"])
-                                                        break
+                                    listener_arns = [get_cf_output(stack_name, "ALBHTTPSListenerArn")]
+                                    secondary_listener_arn = get_cf_output(
+                                        stack_name, "SecondaryALBHTTPSListenerArn", ""
+                                    )
+                                    if secondary_listener_arn:
+                                        listener_arns.append(secondary_listener_arn)
+                                    for listener_arn in listener_arns:
+                                        delete_session_listener_rules(elbv2, listener_arn, session_id)
 
                                     # Find and delete target group for this session
                                     user_target_group_name = f"{stack_name}-{session_id}"[:32]

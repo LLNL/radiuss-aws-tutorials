@@ -36,6 +36,10 @@
     "ParameterValue": "true"
   },
   {
+    "ParameterKey": "EnableSecondALB",
+    "ParameterValue": "true"
+  },
+  {
     "ParameterKey": "DesiredCapacity",
     "ParameterValue": "0"
   },
@@ -49,6 +53,6 @@
   },
   {
     "ParameterKey": "CustomResponseBlocks",
-    "ParameterValue": "[{\"type\":\"divider\"},{\"type\":\"section\",\"text\":{\"type\":\"mrkdwn\",\"text\":\"*Welcome to the MFEM AWS Tutorial*\\nYou can follow the tutorial at your own pace using https://mfem.org/tutorial.\\nYour development container is ready at `https://{{SUBDOMAIN}}.mfem.hpcic.training{{QUERY_STRING}}`\\nThe interactive visualization tool can be accessed at `https://{{SUBDOMAIN}}.mfem.hpcic.training/glvis/live/?socket=/glvis-ws`\\n\"},\"accessory\":{\"type\":\"image\",\"image_url\":\"https://mfem.org/img/logo-300@2x.png\",\"alt_text\":\"MFEM\"}},{\"type\":\"divider\"}]"
+    "ParameterValue": "[{\"type\":\"divider\"},{\"type\":\"section\",\"text\":{\"type\":\"mrkdwn\",\"text\":\"*Welcome to the MFEM AWS Tutorial*\\nYou can follow the tutorial at your own pace using https://mfem.org/tutorial.\\nYour development container is ready at `{{TUTORIAL_URL}}`\\nThe interactive visualization tool can be accessed at `{{TUTORIAL_BASE_URL}}/glvis/live/?socket=/glvis-ws`\\n\"},\"accessory\":{\"type\":\"image\",\"image_url\":\"https://mfem.org/img/logo-300@2x.png\",\"alt_text\":\"MFEM\"}},{\"type\":\"divider\"}]"
   }
 ]
