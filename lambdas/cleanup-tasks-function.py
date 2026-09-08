@@ -18,6 +18,7 @@ def get_cf_output(stack_name, key, default=None):
 
 
 def delete_session_listener_rules(elbv2, listener_arn, session_id):
+    target_group_arns = set()
     paginator = elbv2.get_paginator("describe_rules")
     for page in paginator.paginate(ListenerArn=listener_arn):
         for rule in page["Rules"]:
@@ -26,8 +27,14 @@ def delete_session_listener_rules(elbv2, listener_arn, session_id):
                     value.startswith(f"{session_id}.") for value in condition.get("Values", [])
                 ):
                     print(f"Deleting ALB listener rule for session {session_id}")
+                    target_group_arns.update(
+                        action["TargetGroupArn"]
+                        for action in rule.get("Actions", [])
+                        if action.get("Type") == "forward" and action.get("TargetGroupArn")
+                    )
                     elbv2.delete_rule(RuleArn=rule["RuleArn"])
                     break
+    return target_group_arns
 
 
 def lambda_handler(event, context):
@@ -103,18 +110,18 @@ def lambda_handler(event, context):
                                     )
                                     if secondary_listener_arn:
                                         listener_arns.append(secondary_listener_arn)
+                                    target_group_arns = set()
                                     for listener_arn in listener_arns:
-                                        delete_session_listener_rules(elbv2, listener_arn, session_id)
+                                        target_group_arns.update(
+                                            delete_session_listener_rules(elbv2, listener_arn, session_id)
+                                        )
 
-                                    # Find and delete target group for this session
-                                    user_target_group_name = f"{stack_name}-{session_id}"[:32]
-                                    try:
-                                        target_groups = elbv2.describe_target_groups(Names=[user_target_group_name])
-                                        for tg in target_groups["TargetGroups"]:
-                                            print(f"Deleting target group: {user_target_group_name}")
-                                            elbv2.delete_target_group(TargetGroupArn=tg["TargetGroupArn"])
-                                    except elbv2.exceptions.TargetGroupNotFoundException:
-                                        print(f"Target group {user_target_group_name} not found (already deleted?)")
+                                    for target_group_arn in target_group_arns:
+                                        try:
+                                            print(f"Deleting target group: {target_group_arn}")
+                                            elbv2.delete_target_group(TargetGroupArn=target_group_arn)
+                                        except elbv2.exceptions.TargetGroupNotFoundException:
+                                            print(f"Target group {target_group_arn} already deleted")
 
                                     print(f"Successfully cleaned up ALB session resources for {session_id}")
 

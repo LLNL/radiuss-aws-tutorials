@@ -713,6 +713,7 @@ Resources:
                   - elasticloadbalancing:CreateTargetGroup
                   - elasticloadbalancing:DeleteTargetGroup
                   - elasticloadbalancing:DescribeTargetGroups
+                  - elasticloadbalancing:DescribeTags
                   - elasticloadbalancing:CreateRule
                   - elasticloadbalancing:DeleteRule
                   - elasticloadbalancing:DescribeRules

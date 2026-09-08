@@ -39,6 +39,15 @@ def get_listener_rule_for_host(listener_arn, hostname):
     return None
 
 
+def find_session_rule(listeners, session_id, domain_name):
+    for listener in listeners:
+        hostname = f"{session_id}.{listener['subdomain']}.{domain_name}"
+        rule = get_listener_rule_for_host(listener["arn"], hostname)
+        if rule:
+            return listener, hostname, rule
+    return None, None, None
+
+
 def get_listener_rule_count(listener_arn):
     paginator = elbv2.get_paginator("describe_rules")
     return sum(len(page["Rules"]) for page in paginator.paginate(ListenerArn=listener_arn))
@@ -80,7 +89,7 @@ def create_listener_rule(listener_arn, hostname, target_group_arn, tags):
     raise RuntimeError(f"No listener-rule priorities are available for {listener_arn}")
 
 
-def get_or_create_target_group(name, port, vpc_id, tags):
+def get_or_create_target_group(name, port, vpc_id, tags, task_arn):
     try:
         response = elbv2.create_target_group(
             Name=name,
@@ -89,7 +98,7 @@ def get_or_create_target_group(name, port, vpc_id, tags):
             VpcId=vpc_id,
             TargetType="instance",
             HealthCheckProtocol="HTTP",
-            HealthCheckPort=str(port),
+            HealthCheckPort="traffic-port",
             HealthCheckPath="/",
             HealthCheckIntervalSeconds=20,
             HealthCheckTimeoutSeconds=10,
@@ -102,8 +111,45 @@ def get_or_create_target_group(name, port, vpc_id, tags):
         if error.response["Error"]["Code"] != "DuplicateTargetGroupName":
             raise
 
-    response = elbv2.describe_target_groups(Names=[name])
-    return response["TargetGroups"][0]["TargetGroupArn"]
+    target_group = elbv2.describe_target_groups(Names=[name])["TargetGroups"][0]
+    expected_configuration = {
+        "Protocol": "HTTP",
+        "Port": port,
+        "VpcId": vpc_id,
+        "TargetType": "instance",
+        "HealthCheckProtocol": "HTTP",
+        "HealthCheckPort": "traffic-port",
+    }
+    mismatches = {
+        key: (target_group.get(key), expected)
+        for key, expected in expected_configuration.items()
+        if target_group.get(key) != expected
+    }
+    if mismatches:
+        raise RuntimeError(f"Existing target group {name} has unexpected configuration: {mismatches}")
+
+    existing_tags = {
+        tag["Key"]: tag["Value"]
+        for tag in elbv2.describe_tags(ResourceArns=[target_group["TargetGroupArn"]])["TagDescriptions"][
+            0
+        ]["Tags"]
+    }
+    if existing_tags.get("task-arn") != task_arn:
+        raise RuntimeError(f"Existing target group {name} belongs to a different task")
+    return target_group["TargetGroupArn"]
+
+
+def get_rule_target_group_arn(rule):
+    for action in rule.get("Actions", []):
+        if action.get("Type") == "forward" and action.get("TargetGroupArn"):
+            return action["TargetGroupArn"]
+    raise RuntimeError(f"Existing listener rule {rule['RuleArn']} does not forward to a target group")
+
+
+def target_group_belongs_to_task(target_group_arn, task_arn):
+    tag_descriptions = elbv2.describe_tags(ResourceArns=[target_group_arn])["TagDescriptions"]
+    tags = {tag["Key"]: tag["Value"] for tag in tag_descriptions[0]["Tags"]}
+    return tags.get("task-arn") == task_arn
 
 
 def lambda_handler(event, context):
@@ -180,26 +226,54 @@ def lambda_handler(event, context):
             listeners = [{"arn": alb_listener_arn, "subdomain": tutorial_name}]
             if secondary_alb_listener_arn:
                 listeners.append({"arn": secondary_alb_listener_arn, "subdomain": f"{tutorial_name}-2"})
-            session_listener = select_session_listener(listeners, session_id)
+
+            session_listener, session_hostname, existing_rule = find_session_rule(
+                listeners, session_id, domain_name
+            )
+            user_target_group_arn = None
+            if existing_rule:
+                user_target_group_arn = get_rule_target_group_arn(existing_rule)
+                if target_group_belongs_to_task(user_target_group_arn, task_arn):
+                    print(f"ALB rule already exists for {session_hostname}, reusing it")
+                else:
+                    print(f"Removing stale ALB rule for {session_hostname}")
+                    elbv2.delete_rule(RuleArn=existing_rule["RuleArn"])
+                    elbv2.delete_target_group(TargetGroupArn=user_target_group_arn)
+                    session_listener = None
+                    session_hostname = None
+                    existing_rule = None
+                    user_target_group_arn = None
+
+            if not existing_rule:
+                session_listener = select_session_listener(listeners, session_id)
 
             # Generate unique session ID using public IP
             print(f"Generated session ID: {session_id} (from IP: {public_ip})")
 
-            # Create a dedicated target group for this user session
-            user_target_group_name = f"{stack_name}-{session_id}"[:32]  # ALB name limit
-            print(f"Creating target group: {user_target_group_name}")
+            if not existing_rule:
+                # Include the task ARN so stale resources from a reused public IP cannot be adopted.
+                target_group_digest = hashlib.sha256(
+                    f"{stack_name}:{task_arn}".encode("utf-8")
+                ).hexdigest()[:12]
+                user_target_group_name = f"{stack_name[:19]}-{target_group_digest}"[:32]
+                print(f"Creating target group: {user_target_group_name}")
 
-            vpc_id = get_cf_output(stack_name, "VPCId")
-            user_target_group_arn = get_or_create_target_group(
-                user_target_group_name,
-                main_host_port,
-                vpc_id,
-                [
-                    {"Key": "session-id", "Value": session_id},
-                    {"Key": "user", "Value": user},
-                    {"Key": "stack", "Value": stack_name},
-                ],
-            )
+                vpc_id = get_cf_output(stack_name, "VPCId")
+                user_target_group_arn = get_or_create_target_group(
+                    user_target_group_name,
+                    main_host_port,
+                    vpc_id,
+                    [
+                        {"Key": "session-id", "Value": session_id},
+                        {"Key": "user", "Value": user},
+                        {"Key": "stack", "Value": stack_name},
+                        {"Key": "task-arn", "Value": task_arn},
+                    ],
+                    task_arn,
+                )
+
+            if not user_target_group_arn:
+                raise RuntimeError(f"No target group is available for session {session_id}")
 
             # Register the EC2 instance with the user-specific target group
             print(f"Registering instance {instance_id} with user target group {user_target_group_arn}")
@@ -207,30 +281,36 @@ def lambda_handler(event, context):
                 TargetGroupArn=user_target_group_arn, Targets=[{"Id": instance_id, "Port": main_host_port}]
             )
 
-            listeners = [session_listener] + [listener for listener in listeners if listener != session_listener]
-            rule_tags = [
-                {"Key": "session-id", "Value": session_id},
-                {"Key": "user", "Value": user},
-                {"Key": "stack", "Value": stack_name},
-            ]
-            session_hostname = ""
+            if not existing_rule:
+                if not session_listener:
+                    raise RuntimeError(f"No listener is available for session {session_id}")
+                listeners = [session_listener] + [
+                    listener for listener in listeners if listener != session_listener
+                ]
+                rule_tags = [
+                    {"Key": "session-id", "Value": session_id},
+                    {"Key": "user", "Value": user},
+                    {"Key": "stack", "Value": stack_name},
+                ]
 
-            for listener in listeners:
-                session_hostname = f"{session_id}.{listener['subdomain']}.{domain_name}"
-                existing_rule = get_listener_rule_for_host(listener["arn"], session_hostname)
+                for listener in listeners:
+                    session_hostname = f"{session_id}.{listener['subdomain']}.{domain_name}"
+                    print(f"Creating ALB listener rule for host: {session_hostname}")
+                    try:
+                        create_listener_rule(
+                            listener["arn"], session_hostname, user_target_group_arn, rule_tags
+                        )
+                        break
+                    except ClientError as error:
+                        if not is_listener_rule_limit_error(error) or listener == listeners[-1]:
+                            raise
+                        print(
+                            f"ALB listener rule limit reached for {listener['arn']}, "
+                            "trying the other listener"
+                        )
 
-                if existing_rule:
-                    print(f"ALB rule already exists for {session_hostname}, skipping creation")
-                    break
-
-                print(f"Creating ALB listener rule for host: {session_hostname}")
-                try:
-                    create_listener_rule(listener["arn"], session_hostname, user_target_group_arn, rule_tags)
-                    break
-                except ClientError as error:
-                    if not is_listener_rule_limit_error(error) or listener == listeners[-1]:
-                        raise
-                    print(f"ALB listener rule limit reached for {listener['arn']}, trying the other listener")
+            if not session_hostname:
+                raise RuntimeError(f"No hostname is available for session {session_id}")
 
             ecs.tag_resource(
                 resourceArn=task_arn,
