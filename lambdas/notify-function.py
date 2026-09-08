@@ -52,6 +52,13 @@ def select_session_listener(listeners, session_id):
     return least_used_listeners[int.from_bytes(digest[:4], byteorder="big") % len(least_used_listeners)]
 
 
+def is_listener_rule_limit_error(error):
+    return error.response["Error"]["Code"] in {
+        "TooManyRules",
+        "TooManyRulesException",
+    }
+
+
 def create_listener_rule(listener_arn, hostname, target_group_arn, tags):
     digest = hashlib.sha256(hostname.encode("utf-8")).digest()
     starting_priority = int.from_bytes(digest[:4], byteorder="big") % 50000 + 1
@@ -184,24 +191,30 @@ def lambda_handler(event, context):
                 TargetGroupArn=user_target_group_arn, Targets=[{"Id": instance_id, "Port": main_host_port}]
             )
 
-            # Check if ALB listener rule already exists for this session
-            session_hostname = f"{session_id}.{session_listener['subdomain']}.{domain_name}"
-            existing_rule = get_listener_rule_for_host(session_listener["arn"], session_hostname)
+            listeners = [session_listener] + [listener for listener in listeners if listener != session_listener]
+            rule_tags = [
+                {"Key": "session-id", "Value": session_id},
+                {"Key": "user", "Value": user},
+                {"Key": "stack", "Value": stack_name},
+            ]
+            session_hostname = ""
 
-            if existing_rule:
-                print(f"ALB rule already exists for {session_hostname}, skipping creation")
-            else:
+            for listener in listeners:
+                session_hostname = f"{session_id}.{listener['subdomain']}.{domain_name}"
+                existing_rule = get_listener_rule_for_host(listener["arn"], session_hostname)
+
+                if existing_rule:
+                    print(f"ALB rule already exists for {session_hostname}, skipping creation")
+                    break
+
                 print(f"Creating ALB listener rule for host: {session_hostname}")
-                create_listener_rule(
-                    session_listener["arn"],
-                    session_hostname,
-                    user_target_group_arn,
-                    [
-                        {"Key": "session-id", "Value": session_id},
-                        {"Key": "user", "Value": user},
-                        {"Key": "stack", "Value": stack_name},
-                    ],
-                )
+                try:
+                    create_listener_rule(listener["arn"], session_hostname, user_target_group_arn, rule_tags)
+                    break
+                except ClientError as error:
+                    if not is_listener_rule_limit_error(error) or listener == listeners[-1]:
+                        raise
+                    print(f"ALB listener rule limit reached for {listener['arn']}, trying the other listener")
 
             ecs.tag_resource(
                 resourceArn=task_arn,
