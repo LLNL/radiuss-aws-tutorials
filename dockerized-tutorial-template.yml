@@ -977,20 +977,28 @@ Outputs:
                   --output text 2>/dev/null)
 
                 if [ "$PUBLIC_IP" != "None" ] && [ -n "$PUBLIC_IP" ]; then
-                    # Directly invoke notify Lambda to create ALB rules
-                    aws lambda invoke \
+                  # Directly invoke notify Lambda to create ALB rules
+                  RESPONSE_FILE="/tmp/lambda-response-$TASK_ID.json"
+                  rm -f "$RESPONSE_FILE"
+                  if ! aws lambda invoke \
                     --function-name "${AWS::StackName}-SlackBotNotify" \
                     --cli-binary-format raw-in-base64-out \
                     --payload "{\"detail\":{\"task_arn\":\"$TASK_ARN\",\"cluster\":\"${Cluster}\",\"stack\":\"${AWS::StackName}\",\"response_url\":\"\",\"user\":\"cli-$TASK_ID\",\"port\":\"${TutorialPort}\",\"query_string\":\"${TutorialQueryString}\",\"custom_response_blocks\":\"\"}}" \
-                    /tmp/lambda-response.json > /dev/null 2>&1
+                    "$RESPONSE_FILE" > /dev/null; then
+                    echo "ERROR: Failed to configure routing for task $TASK_ID"
+                    rm -f "$RESPONSE_FILE"
+                    return 1
+                  fi
 
-                   TUTORIAL_URL=$(jq -r '.tutorial_url // empty' /tmp/lambda-response.json)
-                   if [ -n "$TUTORIAL_URL" ]; then
-                     echo "$TASK_ID: $TUTORIAL_URL"
-                   else
-                     echo "ERROR: Task $TASK_ID did not receive a tutorial URL"
-                   fi
-                   return 0
+                  if ! TUTORIAL_URL=$(jq -er '.tutorial_url' "$RESPONSE_FILE"); then
+                    echo "ERROR: Task $TASK_ID did not receive a tutorial URL"
+                    rm -f "$RESPONSE_FILE"
+                    return 1
+                  fi
+
+                  rm -f "$RESPONSE_FILE"
+                  echo "$TASK_ID: $TUTORIAL_URL"
+                  return 0
                 fi
               fi
             fi
