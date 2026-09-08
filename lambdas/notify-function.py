@@ -80,6 +80,32 @@ def create_listener_rule(listener_arn, hostname, target_group_arn, tags):
     raise RuntimeError(f"No listener-rule priorities are available for {listener_arn}")
 
 
+def get_or_create_target_group(name, port, vpc_id, tags):
+    try:
+        response = elbv2.create_target_group(
+            Name=name,
+            Protocol="HTTP",
+            Port=port,
+            VpcId=vpc_id,
+            TargetType="instance",
+            HealthCheckProtocol="HTTP",
+            HealthCheckPort=str(port),
+            HealthCheckPath="/",
+            HealthCheckIntervalSeconds=20,
+            HealthCheckTimeoutSeconds=10,
+            HealthyThresholdCount=2,
+            UnhealthyThresholdCount=10,
+            Tags=tags,
+        )
+        return response["TargetGroups"][0]["TargetGroupArn"]
+    except ClientError as error:
+        if error.response["Error"]["Code"] != "DuplicateTargetGroupName":
+            raise
+
+    response = elbv2.describe_target_groups(Names=[name])
+    return response["TargetGroups"][0]["TargetGroupArn"]
+
+
 def lambda_handler(event, context):
     print("Received event:", json.dumps(event, indent=2))
 
@@ -164,26 +190,16 @@ def lambda_handler(event, context):
             print(f"Creating target group: {user_target_group_name}")
 
             vpc_id = get_cf_output(stack_name, "VPCId")
-            user_target_group_response = elbv2.create_target_group(
-                Name=user_target_group_name,
-                Protocol="HTTP",
-                Port=main_host_port,
-                VpcId=vpc_id,
-                TargetType="instance",
-                HealthCheckProtocol="HTTP",
-                HealthCheckPort=str(main_host_port),
-                HealthCheckPath="/",
-                HealthCheckIntervalSeconds=20,
-                HealthCheckTimeoutSeconds=10,
-                HealthyThresholdCount=2,
-                UnhealthyThresholdCount=10,
-                Tags=[
+            user_target_group_arn = get_or_create_target_group(
+                user_target_group_name,
+                main_host_port,
+                vpc_id,
+                [
                     {"Key": "session-id", "Value": session_id},
                     {"Key": "user", "Value": user},
                     {"Key": "stack", "Value": stack_name},
                 ],
             )
-            user_target_group_arn = user_target_group_response["TargetGroups"][0]["TargetGroupArn"]
 
             # Register the EC2 instance with the user-specific target group
             print(f"Registering instance {instance_id} with user target group {user_target_group_arn}")
