@@ -1,8 +1,10 @@
+import hashlib
 import json
 import time
 
 import boto3
 import requests
+from botocore.exceptions import ClientError
 
 ecs = boto3.client("ecs")
 ec2 = boto3.client("ec2")
@@ -23,6 +25,37 @@ def get_cf_output(stack_name, key):
 def generate_session_id(public_ip):
     """Generate unique session ID using EC2 public IP"""
     return public_ip.replace(".", "-")
+
+
+def get_listener_rule_for_host(listener_arn, hostname):
+    paginator = elbv2.get_paginator("describe_rules")
+    for page in paginator.paginate(ListenerArn=listener_arn):
+        for rule in page["Rules"]:
+            for condition in rule.get("Conditions", []):
+                if condition.get("Field") == "host-header" and hostname in condition.get("Values", []):
+                    return rule
+    return None
+
+
+def create_listener_rule(listener_arn, hostname, target_group_arn, tags):
+    digest = hashlib.sha256(hostname.encode("utf-8")).digest()
+    starting_priority = int.from_bytes(digest[:4], byteorder="big") % 50000 + 1
+
+    for offset in range(50000):
+        priority = (starting_priority - 1 + offset) % 50000 + 1
+        try:
+            return elbv2.create_rule(
+                ListenerArn=listener_arn,
+                Conditions=[{"Field": "host-header", "Values": [hostname]}],
+                Priority=priority,
+                Actions=[{"Type": "forward", "TargetGroupArn": target_group_arn}],
+                Tags=tags,
+            )
+        except ClientError as error:
+            if error.response["Error"]["Code"] != "PriorityInUse":
+                raise
+
+    raise RuntimeError(f"No listener-rule priorities are available for {listener_arn}")
 
 
 def lambda_handler(event, context):
@@ -132,30 +165,17 @@ def lambda_handler(event, context):
 
             # Check if ALB listener rule already exists for this session
             session_hostname = f"{session_id}.{tutorial_name}.{domain_name}"
-            listener_rules = elbv2.describe_rules(ListenerArn=alb_listener_arn)
+            existing_rule = get_listener_rule_for_host(alb_listener_arn, session_hostname)
 
-            rule_exists = False
-            for rule in listener_rules["Rules"]:
-                for condition in rule.get("Conditions", []):
-                    if condition.get("Field") == "host-header":
-                        for value in condition.get("Values", []):
-                            if value == session_hostname:
-                                print(f"ALB rule already exists for {session_hostname}, skipping creation")
-                                rule_exists = True
-                                break
-                if rule_exists:
-                    break
-
-            if not rule_exists:
+            if existing_rule:
+                print(f"ALB rule already exists for {session_hostname}, skipping creation")
+            else:
                 print(f"Creating ALB listener rule for host: {session_hostname}")
-                priority = hash(session_id) % 49000 + 1000
-
-                elbv2.create_rule(
-                    ListenerArn=alb_listener_arn,
-                    Conditions=[{"Field": "host-header", "Values": [session_hostname]}],
-                    Priority=priority,
-                    Actions=[{"Type": "forward", "TargetGroupArn": user_target_group_arn}],
-                    Tags=[
+                create_listener_rule(
+                    alb_listener_arn,
+                    session_hostname,
+                    user_target_group_arn,
+                    [
                         {"Key": "session-id", "Value": session_id},
                         {"Key": "user", "Value": user},
                         {"Key": "stack", "Value": stack_name},
