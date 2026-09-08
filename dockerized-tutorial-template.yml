@@ -11,10 +11,6 @@ Parameters:
   TutorialPort:
     Type: Number
     Description: Main port to expose from container
-  AdditionalPorts:
-    Type: CommaDelimitedList
-    Description: Optional additional ports to expose (comma-separated, e.g. 8000,8080)
-    Default: "NONE"
   TutorialQueryString:
     Type: String
     Description: Query string to append to the container URL
@@ -83,9 +79,6 @@ Parameters:
 
 Conditions:
   HasKeyPair: !Not [!Equals [!Ref KeyPairName, ""]]
-  HasAdditionalPorts: !Not [!Equals [!Select [0, !Ref AdditionalPorts], "NONE"]]
-  HasSecondPort: !And [!Condition HasAdditionalPorts, !Not [!Equals [!Select [0, !Ref AdditionalPorts], ""]]]
-  HasThirdPort: !And [!Condition HasAdditionalPorts, !Not [!Equals [!Join [",", !Ref AdditionalPorts], !Select [0, !Ref AdditionalPorts]]]]
   NeedsGPU: !Equals [!Ref RequiresGPU, "true"]
   HasSecondALB: !Equals [!Ref EnableSecondALB, "true"]
 
@@ -246,18 +239,6 @@ Resources:
             - ContainerPort: !Ref TutorialPort
               HostPort: 0
               Protocol: tcp
-            - !If
-              - HasSecondPort
-              - ContainerPort: !Select [0, !Ref AdditionalPorts]
-                HostPort: 0
-                Protocol: tcp
-              - !Ref "AWS::NoValue"
-            - !If
-              - HasThirdPort
-              - ContainerPort: !Select [1, !Ref AdditionalPorts]
-                HostPort: 0
-                Protocol: tcp
-              - !Ref "AWS::NoValue"
           LogConfiguration:
             LogDriver: awslogs
             Options:

@@ -12,10 +12,6 @@
     "ParameterValue": "3000"
   },
   {
-    "ParameterKey": "AdditionalPorts",
-    "ParameterValue": "NONE"
-  },
-  {
     "ParameterKey": "TutorialName",
     "ParameterValue": "mfem"
   },
