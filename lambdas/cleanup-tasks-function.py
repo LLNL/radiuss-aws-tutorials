@@ -52,18 +52,25 @@ def lambda_handler(event, context):
 
         print(f"Cleaning up tasks older than {cutoff_iso} ({timeout_hours} hours)")
 
-        tasks_response = ecs.list_tasks(cluster=cluster_name, desiredStatus="RUNNING")
+        task_arns = []
+        paginator = ecs.get_paginator("list_tasks")
+        for page in paginator.paginate(cluster=cluster_name, desiredStatus="RUNNING"):
+            task_arns.extend(page["taskArns"])
 
-        if not tasks_response["taskArns"]:
+        if not task_arns:
             print("No running tasks found")
             return {"cleaned_up": 0}
-
-        tasks_details = ecs.describe_tasks(cluster=cluster_name, tasks=tasks_response["taskArns"])
 
         stopped_count = 0
         terminated_instances = []
 
-        for task in tasks_details["tasks"]:
+        tasks = []
+        for offset in range(0, len(task_arns), 100):
+            tasks.extend(
+                ecs.describe_tasks(cluster=cluster_name, tasks=task_arns[offset : offset + 100])["tasks"]
+            )
+
+        for task in tasks:
             task_arn = task["taskArn"]
             created_at = task["createdAt"]
 

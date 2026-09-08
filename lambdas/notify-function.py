@@ -106,7 +106,7 @@ def get_or_create_target_group(name, port, vpc_id, tags, task_arn):
             UnhealthyThresholdCount=10,
             Tags=tags,
         )
-        return response["TargetGroups"][0]["TargetGroupArn"]
+        return response["TargetGroups"][0]["TargetGroupArn"], True
     except ClientError as error:
         if error.response["Error"]["Code"] != "DuplicateTargetGroupName":
             raise
@@ -136,7 +136,7 @@ def get_or_create_target_group(name, port, vpc_id, tags, task_arn):
     }
     if existing_tags.get("task-arn") != task_arn:
         raise RuntimeError(f"Existing target group {name} belongs to a different task")
-    return target_group["TargetGroupArn"]
+    return target_group["TargetGroupArn"], False
 
 
 def get_rule_target_group_arn(rule):
@@ -216,6 +216,7 @@ def lambda_handler(event, context):
         user = detail.get("user", "unknown")
 
         # Get ALB configuration from CloudFormation stack
+        created_target_group_arn = None
         try:
             domain_name = get_cf_output(stack_name, "DomainName")
             tutorial_name = get_cf_output(stack_name, "TutorialName")
@@ -259,7 +260,7 @@ def lambda_handler(event, context):
                 print(f"Creating target group: {user_target_group_name}")
 
                 vpc_id = get_cf_output(stack_name, "VPCId")
-                user_target_group_arn = get_or_create_target_group(
+                user_target_group_arn, target_group_created = get_or_create_target_group(
                     user_target_group_name,
                     main_host_port,
                     vpc_id,
@@ -271,6 +272,8 @@ def lambda_handler(event, context):
                     ],
                     task_arn,
                 )
+                if target_group_created:
+                    created_target_group_arn = user_target_group_arn
 
             if not user_target_group_arn:
                 raise RuntimeError(f"No target group is available for session {session_id}")
@@ -324,6 +327,12 @@ def lambda_handler(event, context):
 
         except Exception as e:
             print(f"Error with ALB session setup: {e}")
+            if created_target_group_arn:
+                try:
+                    elbv2.delete_target_group(TargetGroupArn=created_target_group_arn)
+                    print(f"Deleted unused target group {created_target_group_arn}")
+                except Exception as cleanup_error:
+                    print(f"Error deleting unused target group: {cleanup_error}")
             # Fallback to direct HTTP URL if ALB fails
             tutorial_url = f"http://{public_ip}:{main_host_port}{query_string}"
 
