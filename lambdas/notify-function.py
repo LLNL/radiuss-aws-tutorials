@@ -72,7 +72,7 @@ def create_listener_rule(listener_arn, hostname, target_group_arn, tags):
     digest = hashlib.sha256(hostname.encode("utf-8")).digest()
     starting_priority = int.from_bytes(digest[:4], byteorder="big") % 50000 + 1
 
-    for offset in range(50000):
+    for offset in range(100):
         priority = (starting_priority - 1 + offset) % 50000 + 1
         try:
             return elbv2.create_rule(
@@ -86,7 +86,7 @@ def create_listener_rule(listener_arn, hostname, target_group_arn, tags):
             if error.response["Error"]["Code"] != "PriorityInUse":
                 raise
 
-    raise RuntimeError(f"No listener-rule priorities are available for {listener_arn}")
+    raise RuntimeError(f"Could not find an available listener-rule priority for {listener_arn}")
 
 
 def get_or_create_target_group(name, port, vpc_id, tags, task_arn):
