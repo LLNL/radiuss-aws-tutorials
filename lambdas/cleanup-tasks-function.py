@@ -67,9 +67,7 @@ def lambda_handler(event, context):
 
         tasks = []
         for offset in range(0, len(task_arns), 100):
-            tasks.extend(
-                ecs.describe_tasks(cluster=cluster_name, tasks=task_arns[offset : offset + 100])["tasks"]
-            )
+            tasks.extend(ecs.describe_tasks(cluster=cluster_name, tasks=task_arns[offset : offset + 100])["tasks"])
 
         for task in tasks:
             task_arn = task["taskArn"]
@@ -99,9 +97,7 @@ def lambda_handler(event, context):
                             print(f"Cleaning up session resources for: {session_id}")
 
                             listener_arns = [get_cf_output(stack_name, "ALBHTTPSListenerArn")]
-                            secondary_listener_arn = get_cf_output(
-                                stack_name, "SecondaryALBHTTPSListenerArn", ""
-                            )
+                            secondary_listener_arn = get_cf_output(stack_name, "SecondaryALBHTTPSListenerArn", "")
                             if secondary_listener_arn:
                                 listener_arns.append(secondary_listener_arn)
                             target_group_arns = set()
@@ -112,16 +108,13 @@ def lambda_handler(event, context):
                             try:
                                 target_groups = elbv2.describe_target_groups(Names=[target_group_name])
                                 target_group_arns.update(
-                                    target_group["TargetGroupArn"]
-                                    for target_group in target_groups["TargetGroups"]
+                                    target_group["TargetGroupArn"] for target_group in target_groups["TargetGroups"]
                                 )
                             except elbv2.exceptions.TargetGroupNotFoundException:
                                 pass
 
                             for listener_arn in listener_arns:
-                                target_group_arns.update(
-                                    delete_session_listener_rules(elbv2, listener_arn, session_id)
-                                )
+                                target_group_arns.update(delete_session_listener_rules(elbv2, listener_arn, session_id))
 
                             for target_group_arn in target_group_arns:
                                 try:

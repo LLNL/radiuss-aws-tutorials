@@ -130,9 +130,7 @@ def get_or_create_target_group(name, port, vpc_id, tags, task_arn):
 
     existing_tags = {
         tag["Key"]: tag["Value"]
-        for tag in elbv2.describe_tags(ResourceArns=[target_group["TargetGroupArn"]])["TagDescriptions"][
-            0
-        ]["Tags"]
+        for tag in elbv2.describe_tags(ResourceArns=[target_group["TargetGroupArn"]])["TagDescriptions"][0]["Tags"]
     }
     if existing_tags.get("task-arn") != task_arn:
         raise RuntimeError(f"Existing target group {name} belongs to a different task")
@@ -228,9 +226,7 @@ def lambda_handler(event, context):
             if secondary_alb_listener_arn:
                 listeners.append({"arn": secondary_alb_listener_arn, "subdomain": f"{tutorial_name}-2"})
 
-            session_listener, session_hostname, existing_rule = find_session_rule(
-                listeners, session_id, domain_name
-            )
+            session_listener, session_hostname, existing_rule = find_session_rule(listeners, session_id, domain_name)
             user_target_group_arn = None
             if existing_rule:
                 user_target_group_arn = get_rule_target_group_arn(existing_rule)
@@ -253,9 +249,7 @@ def lambda_handler(event, context):
 
             if not existing_rule:
                 # Include the task ARN so stale resources from a reused public IP cannot be adopted.
-                target_group_digest = hashlib.sha256(
-                    f"{stack_name}:{task_arn}".encode("utf-8")
-                ).hexdigest()[:12]
+                target_group_digest = hashlib.sha256(f"{stack_name}:{task_arn}".encode("utf-8")).hexdigest()[:12]
                 user_target_group_name = f"{stack_name[:19]}-{target_group_digest}"[:32]
                 print(f"Creating target group: {user_target_group_name}")
 
@@ -287,9 +281,7 @@ def lambda_handler(event, context):
             if not existing_rule:
                 if not session_listener:
                     raise RuntimeError(f"No listener is available for session {session_id}")
-                listeners = [session_listener] + [
-                    listener for listener in listeners if listener != session_listener
-                ]
+                listeners = [session_listener] + [listener for listener in listeners if listener != session_listener]
                 rule_tags = [
                     {"Key": "session-id", "Value": session_id},
                     {"Key": "user", "Value": user},
@@ -300,17 +292,12 @@ def lambda_handler(event, context):
                     session_hostname = f"{session_id}.{listener['subdomain']}.{domain_name}"
                     print(f"Creating ALB listener rule for host: {session_hostname}")
                     try:
-                        create_listener_rule(
-                            listener["arn"], session_hostname, user_target_group_arn, rule_tags
-                        )
+                        create_listener_rule(listener["arn"], session_hostname, user_target_group_arn, rule_tags)
                         break
                     except ClientError as error:
                         if not is_listener_rule_limit_error(error) or listener == listeners[-1]:
                             raise
-                        print(
-                            f"ALB listener rule limit reached for {listener['arn']}, "
-                            "trying the other listener"
-                        )
+                        print(f"ALB listener rule limit reached for {listener['arn']}, " "trying the other listener")
 
             if not session_hostname:
                 raise RuntimeError(f"No hostname is available for session {session_id}")
