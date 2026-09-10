@@ -25,15 +25,11 @@
   },
   {
     "ParameterKey": "InstanceType",
-    "ParameterValue": "m6idn.xlarge"
+    "ParameterValue": "g4dn.xlarge"
   },
   {
     "ParameterKey": "RequiresGPU",
-    "ParameterValue": "false"
-  },
-  {
-    "ParameterKey": "TaskMemoryReservation",
-    "ParameterValue": "14000"
+    "ParameterValue": "true"
   },
   {
     "ParameterKey": "DesiredCapacity",
