@@ -21,10 +21,11 @@ Parameters are configured in JSON files in the `parameters/` directory:
 - `parameters/axom.json` - Axom tutorial configuration
 - `parameters/ygm.json` - YGM tutorial configuration
 - `parameters/blt.json` - BLT tutorial configuration
+- `parameters/warpx.json` - WarpX tutorial configuration
 
 Choose the tutorial you want to deploy:
 ``` bash
-# Choose tutorial (raja, mfem, axom, ygm, or blt)
+# Choose tutorial (raja, mfem, axom, ygm, blt, or warpx)
 TUTORIAL_NAME=raja
 ```
 

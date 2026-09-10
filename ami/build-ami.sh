@@ -49,6 +49,17 @@ RECIPE_ARN=$(aws imagebuilder create-image-recipe \
   --name "${PIPELINE_NAME}-recipe" \
   --semantic-version "1.0.0" \
   --parent-image "$BASE_AMI_ID" \
+  --block-device-mappings '[
+    {
+      "deviceName": "/dev/xvda",
+      "ebs": {
+        "deleteOnTermination": true,
+        "encrypted": true,
+        "volumeSize": 100,
+        "volumeType": "gp3"
+      }
+    }
+  ]' \
   --components "[{\"componentArn\": \"$COMPONENT_ARN\"}]" \
   --query 'imageRecipeArn' --output text)
 
