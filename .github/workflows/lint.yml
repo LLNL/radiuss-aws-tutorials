@@ -33,7 +33,7 @@ jobs:
         run: isort --check-only lambdas/
 
       - name: Run flake8 (Python linter)
-        run: flake8 --max-line-length=120 lambdas/
+        run: flake8 --max-line-length=120 --extend-ignore=E203 lambdas/
 
   cf-lint:
     runs-on: ubuntu-latest

@@ -10,7 +10,7 @@ To create an AMI see `ami/README.md`.
 Notes:
 - You must have your AWS credentials configured in `~/.aws/credentials`
 - You can set your region with `region = us-east-1` in `~/.aws/config`.
-- The HTTPS set up with the ALB limits number of instances to 100.
+- Each active HTTPS session uses one ALB listener rule. The default deployment uses one ALB; set `EnableSecondALB` to `true` to distribute sessions across two ALBs.
 
 # AWS CLI commands
 
@@ -58,6 +58,12 @@ aws s3api list-object-versions \
     --output table
 ```
 
+## Second ALB for MFEM
+
+`parameters/mfem.json` enables a second ALB. New sessions are assigned to the ALB with fewer listener rules. Sessions on the second ALB use the hostname pattern `SESSION_ID.mfem-2.hpcic.training`; the Slack response and CLI task launch command return the assigned URL.
+
+The second ALB has its own wildcard Route 53 record and ACM certificate. It increases listener-rule capacity, but does not make individual sessions faster. Other tutorial parameter files leave `EnableSecondALB` at its default value of `false`.
+
 ## Launch tasks from CLI
 Launch tasks from CLI and wait for tutorial URLs to be returned:
 ``` bash
@@ -100,21 +106,29 @@ eval "$(aws cloudformation describe-stacks \
 ```
 Delete all non-default ALB rules:
 ``` bash
-# Get the ALB listener ARN
+# Get the ALB listener ARNs
 ALB_LISTENER_ARN=$(aws cloudformation describe-stacks \
   --stack-name "${TUTORIAL_NAME}-tutorial" \
   --query "Stacks[0].Outputs[?OutputKey=='ALBHTTPSListenerArn'].OutputValue" \
   --output text)
+SECONDARY_ALB_LISTENER_ARN=$(aws cloudformation describe-stacks \
+  --stack-name "${TUTORIAL_NAME}-tutorial" \
+  --query "Stacks[0].Outputs[?OutputKey=='SecondaryALBHTTPSListenerArn'].OutputValue" \
+  --output text)
 
-# Delete all non-default rules
-aws elbv2 describe-rules --listener-arn $ALB_LISTENER_ARN \
-  --query 'Rules[?IsDefault==`false`].RuleArn' \
-  --output text | tr '\t' '\n' | while read -r rule_arn; do
-    if [ -n "$rule_arn" ]; then
-      echo "Deleting rule: $rule_arn"
-      aws elbv2 delete-rule --rule-arn "$rule_arn"
-    fi
-  done
+# Delete all non-default rules on both listeners
+for listener_arn in "$ALB_LISTENER_ARN" "$SECONDARY_ALB_LISTENER_ARN"; do
+  if [ -n "$listener_arn" ] && [ "$listener_arn" != "None" ]; then
+    aws elbv2 describe-rules --listener-arn "$listener_arn" \
+      --query 'Rules[?IsDefault==`false`].RuleArn' \
+      --output text | tr '\t' '\n' | while read -r rule_arn; do
+        if [ -n "$rule_arn" ]; then
+          echo "Deleting rule: $rule_arn"
+          aws elbv2 delete-rule --rule-arn "$rule_arn"
+        fi
+      done
+  fi
+done
 
 # Clean up all session-based target groups
 STACK_PREFIX="${TUTORIAL_NAME}-tutorial"
