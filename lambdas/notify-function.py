@@ -38,7 +38,7 @@ def tutorial_url_suffix(query_string):
 
 
 def wait_for_target_health(target_group_arn, instance_id, port, context):
-    for attempt in range(60):
+    for attempt in range(120):
         target_health = elbv2.describe_target_health(
             TargetGroupArn=target_group_arn,
             Targets=[{"Id": instance_id, "Port": port}],
