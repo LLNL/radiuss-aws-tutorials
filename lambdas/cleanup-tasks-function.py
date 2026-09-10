@@ -67,7 +67,7 @@ def lambda_handler(event, context):
 
         tasks = []
         for offset in range(0, len(task_arns), 100):
-            tasks.extend(ecs.describe_tasks(cluster=cluster_name, tasks=task_arns[offset : offset + 100])["tasks"])
+            tasks.extend(ecs.describe_tasks(cluster=cluster_name, tasks=task_arns[offset: offset + 100])["tasks"])
 
         for task in tasks:
             task_arn = task["taskArn"]
