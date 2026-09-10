@@ -133,6 +133,7 @@ def get_or_create_target_group(name, port, vpc_id, tags, task_arn):
             HealthCheckTimeoutSeconds=10,
             HealthyThresholdCount=2,
             UnhealthyThresholdCount=10,
+            Matcher={"HttpCode": "200-399"},
             Tags=tags,
         )
         return response["TargetGroups"][0]["TargetGroupArn"], True

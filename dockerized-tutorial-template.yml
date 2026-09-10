@@ -617,7 +617,7 @@ Resources:
       Code:
         S3Bucket: hpcic-tutorials-lambdas
         S3Key: slackbot-ec2/notify-function.zip
-        S3ObjectVersion: "TXH2Y_U6ddJHacgkr8SHyFw21ZO0zrhu"
+        S3ObjectVersion: "LfJ93CY88Ii.XQ3MZv1qDPLBckWlfqNP"
 
   SlackBotEventRule:
     Type: AWS::Events::Rule
